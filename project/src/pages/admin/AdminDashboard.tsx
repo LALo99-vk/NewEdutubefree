@@ -1,11 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, BookOpen, List, Plus, Search, 
-  BarChart, TrendingUp, UserPlus, Filter, Eye, Edit, Trash 
+  BarChart, TrendingUp, UserPlus, Filter, Eye, Edit, Trash,
+  PieChart, Activity
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { courses } from '../../data/mockData';
+import ProgressBar from '../../components/ui/ProgressBar';
+
+interface Course {
+  _id: string;
+  title: string;
+  description: string;
+  instructor: string;
+  thumbnail: string;
+  category: { _id: string; name: string };
+  level: string;
+  rating: number;
+  totalStudents: number;
+  featured: boolean;
+  createdAt: string;
+  updatedAt: string;
+  modules: Array<{
+    _id: string;
+    title: string;
+    lessons: Array<{
+      _id: string;
+      title: string;
+      duration: string;
+    }>;
+  }>;
+}
+
+interface User {
+  _id: string;
+  name: string;
+  email: string;
+  role: string;
+  createdAt: string;
+  enrolledCourses?: Array<{
+    course: { _id: string; title: string };
+    progress: number;
+  }>;
+}
+
+interface Category {
+  _id: string;
+  name: string;
+  icon: string;
+  count: number;
+}
+
+interface CourseProgress {
+  courseName: string;
+  averageProgress: number;
+  totalStudents: number;
+}
 
 const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -13,20 +63,115 @@ const AdminDashboard: React.FC = () => {
   
   const [activeTab, setActiveTab] = useState('overview');
   const [searchQuery, setSearchQuery] = useState('');
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [courseProgress, setCourseProgress] = useState<CourseProgress[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   // Redirect if not admin
   if (user?.role !== 'admin') {
     navigate('/');
     return null;
   }
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        const token = localStorage.getItem('token');
+        if (!token) {
+          throw new Error('No authentication token found');
+        }
+
+        // Fetch courses
+        const coursesResponse = await fetch('http://localhost:8080/api/courses', {
+          headers: {
+            'x-auth-token': token
+          }
+        });
+
+        if (!coursesResponse.ok) {
+          throw new Error('Failed to fetch courses');
+        }
+
+        const coursesData = await coursesResponse.json();
+        setCourses(coursesData);
+
+        // Fetch users
+        const usersResponse = await fetch('http://localhost:8080/api/users', {
+          headers: {
+            'x-auth-token': token
+          }
+        });
+
+        if (!usersResponse.ok) {
+          throw new Error('Failed to fetch users');
+        }
+
+        const usersData = await usersResponse.json();
+        setUsers(usersData);
+
+        // Fetch categories
+        const categoriesResponse = await fetch('http://localhost:8080/api/categories');
+
+        if (!categoriesResponse.ok) {
+          throw new Error('Failed to fetch categories');
+        }
+
+        const categoriesData = await categoriesResponse.json();
+        setCategories(categoriesData);
+
+        // Calculate course progress statistics
+        // In a real app, you might have a dedicated endpoint for this
+        const progressStats = coursesData.map((course: Course) => {
+          const enrolledUsers = usersData.filter((user: User) => 
+            user.enrolledCourses && user.enrolledCourses.some((ec: { course: { _id: string } }) => 
+              ec.course._id === course._id
+            )
+          );
+          
+          const totalEnrolled = enrolledUsers.length;
+          
+          let avgProgress = 0;
+          if (totalEnrolled > 0) {
+            const totalProgress = enrolledUsers.reduce((sum: number, user: User) => {
+              const courseEnrollment = user.enrolledCourses?.find((ec: { course: { _id: string } }) => 
+                ec.course._id === course._id
+              );
+              return sum + (courseEnrollment?.progress || 0);
+            }, 0);
+            
+            avgProgress = totalProgress / totalEnrolled;
+          }
+          
+          return {
+            courseName: course.title,
+            averageProgress: avgProgress,
+            totalStudents: totalEnrolled
+          };
+        });
+        
+        setCourseProgress(progressStats);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+        console.error('Error fetching data:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
   
   const stats = {
     totalCourses: courses.length,
-    totalUsers: 4278,
+    totalUsers: users.length,
     totalLessons: courses.reduce((sum, course) => {
       return sum + course.modules.reduce((moduleSum, module) => moduleSum + module.lessons.length, 0);
     }, 0),
-    totalCategories: new Set(courses.map(course => course.category)).size,
+    totalCategories: categories.length,
   };
   
   // Filter courses based on search query
@@ -36,6 +181,45 @@ const AdminDashboard: React.FC = () => {
     course.instructor.toLowerCase().includes(searchQuery.toLowerCase())
   );
   
+  // Calculate average course completion for all users
+  const calculateOverallProgress = () => {
+    if (users.length === 0) return 0;
+    
+    const usersWithCourses = users.filter(u => u.enrolledCourses && u.enrolledCourses.length > 0);
+    if (usersWithCourses.length === 0) return 0;
+    
+    const totalProgress = usersWithCourses.reduce((sum: number, u: User) => {
+      if (!u.enrolledCourses) return sum;
+      
+      const userAvgProgress = u.enrolledCourses.reduce(
+        (courseSum: number, enrollment: { progress: number }) => courseSum + enrollment.progress, 0
+      ) / u.enrolledCourses.length;
+      
+      return sum + userAvgProgress;
+    }, 0);
+    
+    return Math.round(totalProgress / usersWithCourses.length);
+  };
+  
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded max-w-md">
+          <p className="font-bold">Error</p>
+          <p>{error}</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -88,8 +272,112 @@ const AdminDashboard: React.FC = () => {
             >
               Users
             </button>
+            <button
+              className={`px-1 py-4 text-sm font-medium border-b-2 ${
+                activeTab === 'progress' 
+                  ? 'border-primary-500 text-primary-600' 
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+              onClick={() => setActiveTab('progress')}
+            >
+              Progress Tracking
+            </button>
           </nav>
         </div>
+        
+        {activeTab === 'progress' && (
+          <>
+            <div className="mb-8 bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">Course Progress Overview</h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-semibold text-gray-700 mb-2">Overall Course Completion</h3>
+                  <p className="text-3xl font-bold text-primary-600 mb-2">{calculateOverallProgress()}%</p>
+                  <ProgressBar progress={calculateOverallProgress()} height={10} />
+                </div>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <h3 className="font-semibold text-gray-700 mb-2">Active Learners</h3>
+                  <p className="text-3xl font-bold text-primary-600">
+                    {users.filter(u => u.enrolledCourses && u.enrolledCourses.length > 0).length}
+                  </p>
+                  <p className="text-gray-600 text-sm">
+                    {users.length > 0 
+                      ? Math.round((users.filter(u => u.enrolledCourses && u.enrolledCourses.length > 0).length / users.length) * 100) 
+                      : 0}% of total users
+                  </p>
+                </div>
+              </div>
+              
+              <h3 className="font-semibold text-gray-700 mb-4">Course Completion Rates</h3>
+              {courseProgress
+                .filter(cp => cp.totalStudents > 0)
+                .sort((a, b) => b.totalStudents - a.totalStudents)
+                .slice(0, 5)
+                .map((cp, index) => (
+                  <div key={index} className="mb-4">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-sm font-medium text-gray-700">{cp.courseName}</span>
+                      <span className="text-sm font-medium text-gray-700">
+                        {cp.totalStudents} student{cp.totalStudents !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <ProgressBar 
+                      progress={cp.averageProgress} 
+                      color={cp.averageProgress > 75 ? "bg-green-600" : cp.averageProgress > 50 ? "bg-blue-600" : "bg-primary-600"}
+                    />
+                  </div>
+                ))}
+            </div>
+            
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-4">User Progress Details</h2>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Enrolled Courses</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg. Progress</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {users
+                      .filter(u => u.enrolledCourses && u.enrolledCourses.length > 0)
+                      .slice(0, 10)
+                      .map((user: User) => {
+                        const avgProgress = user.enrolledCourses 
+                          ? Math.round(user.enrolledCourses.reduce((sum: number, ec: { progress: number }) => sum + ec.progress, 0) / user.enrolledCourses.length)
+                          : 0;
+                          
+                        return (
+                          <tr key={user._id}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="flex-shrink-0 h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center">
+                                  <span className="text-primary-600 font-medium">{user.name.charAt(0).toUpperCase()}</span>
+                                </div>
+                                <div className="ml-4">
+                                  <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.enrolledCourses?.length || 0}</td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="w-32">
+                                <ProgressBar progress={avgProgress} height={6} />
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        )}
         
         {activeTab === 'overview' && (
           <>
@@ -363,7 +651,44 @@ const AdminDashboard: React.FC = () => {
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900">{course.title}</div>
-                              <div className="text-sm text-gray-500">{course.level}</div>
+                              <div key={course._id} className="overflow-hidden shadow-md rounded-lg bg-white">
+                                <div className="p-6">
+                                  <div className="flex items-start">
+                                    <div className="flex-1">
+                                      <h3 className="text-lg font-semibold text-gray-900">{course.title}</h3>
+                                      <p className="mt-1 text-sm text-gray-500">{course.instructor}</p>
+                                    </div>
+                                    <div>
+                                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${course.level === 'beginner' ? 'bg-green-100 text-green-800' : course.level === 'intermediate' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
+                                        {course.level}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3">
+                                    <p className="text-sm text-gray-500 line-clamp-2">{course.description}</p>
+                                  </div>
+                                  <div className="mt-4 flex items-center">
+                                    <div className="flex text-yellow-400">
+                                      <div className="flex items-center">
+                                        <span className="text-sm font-medium">{course.rating.toFixed(1)}</span>
+                                      </div>
+                                    </div>
+                                    <div className="ml-auto flex">
+                                      <button
+                                        onClick={() => navigate(`/admin/courses/${course._id}/edit`)}
+                                        className="text-gray-400 hover:text-primary-600 mr-2"
+                                      >
+                                        <Edit className="h-5 w-5" />
+                                      </button>
+                                      <button
+                                        className="text-gray-400 hover:text-red-600"
+                                      >
+                                        <Trash className="h-5 w-5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
                           </div>
                         </td>

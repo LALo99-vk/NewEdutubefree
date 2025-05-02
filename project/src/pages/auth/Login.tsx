@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Mail, Lock, LogIn } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -11,6 +11,10 @@ const Login: React.FC = () => {
   
   const { login } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  // Get redirect path from location state if available
+  const redirectTo = location.state?.redirectTo || '/';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +23,8 @@ const Login: React.FC = () => {
     
     try {
       await login(email, password);
-      navigate('/');
+      // Navigate to the redirect path after successful login
+      navigate(redirectTo);
     } catch (err) {
       setError('Invalid email or password');
     } finally {

@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Star, Users, Clock } from 'lucide-react';
 import { Course } from '../../types';
+import { useAuth } from '../../context/AuthContext';
 
 interface CourseCardProps {
   course: Course;
@@ -9,6 +10,7 @@ interface CourseCardProps {
 
 const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   
   // Calculate total lessons and duration
   const totalLessons = course.modules.reduce((sum, module) => sum + module.lessons.length, 0);
@@ -22,10 +24,19 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
   
   const formattedDuration = `${Math.floor(totalDuration)}h ${Math.round((totalDuration % 1) * 60)}m`;
 
+  // Handle card click based on authentication status
+  const handleCardClick = () => {
+    if (isAuthenticated) {
+      navigate(`/courses/${course.id}`);
+    } else {
+      navigate('/login', { state: { redirectTo: `/courses/${course.id}` } });
+    }
+  };
+
   return (
     <div 
       className="card overflow-hidden transition-all duration-300 hover:translate-y-[-5px]"
-      onClick={() => navigate(`/courses/${course.id}`)}
+      onClick={handleCardClick}
     >
       <div className="relative">
         <img 

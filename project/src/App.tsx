@@ -44,8 +44,8 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/login" element={<Login />} />
               <Route path="/register" element={<Register />} />
-              <Route path="/courses" element={<CoursesPage />} />
-              <Route path="/courses/:id" element={<CourseDetailPage />} />
+              <Route path="/courses" element={<ProtectedRoute><CoursesPage /></ProtectedRoute>} />
+              <Route path="/courses/:id" element={<ProtectedRoute><CourseDetailPage /></ProtectedRoute>} />
               <Route 
                 path="/admin/*" 
                 element={

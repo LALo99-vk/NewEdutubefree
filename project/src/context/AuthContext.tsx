@@ -10,68 +10,58 @@ interface AuthContextType {
   logout: () => void;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+interface AuthResponse {
+  token: string;
+  user: User;
+}
 
-// Mock user database for demo purposes
-const mockUsers = [
-  {
-    id: '1',
-    name: 'Admin User',
-    email: 'admin@example.com',
-    password: 'admin123', // In a real app, this would be hashed
-    role: 'admin' as const,
-    createdAt: new Date().toISOString(),
-  },
-  {
-    id: '2',
-    name: 'Test User',
-    email: 'user@example.com',
-    password: 'user123', // In a real app, this would be hashed
-    role: 'user' as const,
-    createdAt: new Date().toISOString(),
-  },
-];
+const API_URL = 'http://localhost:8080/api';
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check for saved user in localStorage
+    // Check for saved auth data in localStorage
+    const token = localStorage.getItem('token');
     const savedUser = localStorage.getItem('user');
-    if (savedUser) {
+    
+    if (token && savedUser) {
       setUser(JSON.parse(savedUser));
+      // You could also validate the token here by making a request to the backend
     }
+    
     setIsLoading(false);
   }, []);
 
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch(`${API_URL}/users/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ email, password })
+      });
       
-      // Find user with matching email
-      const foundUser = mockUsers.find(u => u.email === email);
-      
-      if (!foundUser || foundUser.password !== password) {
-        throw new Error('Invalid email or password');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.msg || 'Login failed');
       }
       
-      // Create user object without password
-      const userWithoutPassword: User = {
-        id: foundUser.id,
-        name: foundUser.name,
-        email: foundUser.email,
-        role: foundUser.role,
-        createdAt: foundUser.createdAt,
-      };
+      const data: AuthResponse = await response.json();
       
-      setUser(userWithoutPassword);
-      localStorage.setItem('user', JSON.stringify(userWithoutPassword));
+      // Store token and user data
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
+      setUser(data.user);
     } catch (error) {
       console.error('Login failed:', error);
-      throw new Error('Invalid credentials');
+      throw error;
     } finally {
       setIsLoading(false);
     }
@@ -80,39 +70,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (name: string, email: string, password: string) => {
     setIsLoading(true);
     try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await fetch(`${API_URL}/users/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name, email, password })
+      });
       
-      // Check if user already exists
-      if (mockUsers.some(u => u.email === email)) {
-        throw new Error('User already exists');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.msg || 'Registration failed');
       }
       
-      // Create new user
-      const newUser: User = {
-        id: Math.random().toString(36).substring(2, 9),
-        name,
-        email,
-        role: 'user',
-        createdAt: new Date().toISOString(),
-      };
+      const data: AuthResponse = await response.json();
       
-      // In a real app, we would hash the password and save to database
-      mockUsers.push({ ...newUser, password });
+      // Store token and user data
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
       
-      setUser(newUser);
-      localStorage.setItem('user', JSON.stringify(newUser));
+      setUser(data.user);
     } catch (error) {
       console.error('Registration failed:', error);
-      throw new Error('Registration failed');
+      throw error;
     } finally {
       setIsLoading(false);
     }
   };
 
   const logout = () => {
-    setUser(null);
+    // Clear all auth data
+    localStorage.removeItem('token');
     localStorage.removeItem('user');
+    setUser(null);
   };
 
   return (
