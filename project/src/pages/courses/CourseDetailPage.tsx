@@ -103,6 +103,65 @@ const CourseDetailPage: React.FC = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
   
+  // Find the next lesson after the current one
+  const findNextLesson = (): Lesson | null => {
+    if (!currentLesson || !course) return null;
+    
+    // Loop through all modules and their lessons
+    for (const module of course.modules) {
+      // Get the index of the current lesson in this module
+      const lessonIndex = module.lessons.findIndex(lesson => lesson.id === currentLesson.id);
+      
+      if (lessonIndex !== -1) {
+        // Check if there's a next lesson in this module
+        if (lessonIndex < module.lessons.length - 1) {
+          return module.lessons[lessonIndex + 1];
+        }
+        
+        // This was the last lesson in the current module, look for the next module
+        const moduleIndex = course.modules.findIndex(m => m.id === module.id);
+        if (moduleIndex < course.modules.length - 1) {
+          // There's a next module, return its first lesson
+          const nextModule = course.modules[moduleIndex + 1];
+          if (nextModule.lessons.length > 0) {
+            return nextModule.lessons[0];
+          }
+        }
+        
+        // This was the last lesson in the last module
+        return null;
+      }
+    }
+    
+    return null;
+  };
+  
+  // Handle navigation to the next lesson
+  const handleNextLesson = () => {
+    const nextLesson = findNextLesson();
+    if (nextLesson) {
+      handleLessonSelect(nextLesson);
+    }
+  };
+  
+  // Generate a flat list of all lessons for progress tracking
+  const getAllLessons = () => {
+    if (!course) return [];
+    
+    const allLessons: Array<{id: string, moduleId: string}> = [];
+    
+    course.modules.forEach(module => {
+      module.lessons.forEach(lesson => {
+        allLessons.push({
+          id: lesson.id,
+          moduleId: module.id
+        });
+      });
+    });
+    
+    return allLessons;
+  };
+  
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Course video and info section */}
@@ -112,7 +171,15 @@ const CourseDetailPage: React.FC = () => {
             <div className="lg:col-span-2">
               {currentLesson ? (
                 <>
-                  <VideoPlayer videoUrl={currentLesson.videoUrl} title={currentLesson.title} />
+                  <VideoPlayer 
+                    videoUrl={currentLesson.videoUrl} 
+                    title={currentLesson.title}
+                    courseId={course.id}
+                    lessonId={currentLesson.id}
+                    totalLessons={totalLessons}
+                    onNextLesson={handleNextLesson}
+                    availableLessons={getAllLessons()}
+                  />
                   <div className="mt-6">
                     <h2 className="text-2xl font-bold text-gray-900 mb-2">{currentLesson.title}</h2>
                     <p className="text-gray-600 mb-4">{currentLesson.description}</p>

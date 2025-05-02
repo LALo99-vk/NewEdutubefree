@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import ProgressBar from '../../components/ui/ProgressBar';
 import { Link } from 'react-router-dom';
+import { Award, Clock, BookOpen, Calendar } from 'lucide-react';
 
 interface EnrolledCourse {
   _id: string;
@@ -21,6 +22,11 @@ const UserDashboard: React.FC = () => {
   const [enrolledCourses, setEnrolledCourses] = useState<EnrolledCourse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [statistics, setStatistics] = useState({
+    totalCompleted: 0,
+    inProgress: 0,
+    notStarted: 0
+  });
 
   useEffect(() => {
     const fetchEnrolledCourses = async () => {
@@ -54,6 +60,20 @@ const UserDashboard: React.FC = () => {
     fetchEnrolledCourses();
   }, []);
 
+  useEffect(() => {
+    if (enrolledCourses.length > 0) {
+      const completed = enrolledCourses.filter(course => course.progress === 100).length;
+      const notStarted = enrolledCourses.filter(course => course.progress === 0).length;
+      const inProgress = enrolledCourses.length - completed - notStarted;
+      
+      setStatistics({
+        totalCompleted: completed,
+        inProgress: inProgress,
+        notStarted: notStarted
+      });
+    }
+  }, [enrolledCourses]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -72,6 +92,10 @@ const UserDashboard: React.FC = () => {
     );
   }
 
+  const totalProgress = enrolledCourses.length > 0
+    ? Math.round(enrolledCourses.reduce((sum, course) => sum + course.progress, 0) / enrolledCourses.length)
+    : 0;
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="bg-white rounded-lg shadow-md p-6 mb-8">
@@ -85,19 +109,53 @@ const UserDashboard: React.FC = () => {
           </div>
         </div>
         
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="font-semibold text-gray-700 mb-2">Total Courses Enrolled</h3>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
+          <div className="bg-gray-50 p-4 rounded-lg flex flex-col items-center justify-center">
+            <div className="mb-2 text-primary-600">
+              <BookOpen size={24} />
+            </div>
+            <h3 className="font-semibold text-gray-700 mb-1 text-center">Total Enrolled</h3>
             <p className="text-3xl font-bold text-primary-600">{enrolledCourses.length}</p>
           </div>
           
-          <div className="bg-gray-50 p-4 rounded-lg">
-            <h3 className="font-semibold text-gray-700 mb-2">Average Progress</h3>
-            <p className="text-3xl font-bold text-primary-600">
-              {enrolledCourses.length > 0 
-                ? Math.round(enrolledCourses.reduce((sum, course) => sum + course.progress, 0) / enrolledCourses.length) 
-                : 0}%
-            </p>
+          <div className="bg-gray-50 p-4 rounded-lg flex flex-col items-center justify-center">
+            <div className="mb-2 text-green-600">
+              <Award size={24} />
+            </div>
+            <h3 className="font-semibold text-gray-700 mb-1 text-center">Completed</h3>
+            <p className="text-3xl font-bold text-green-600">{statistics.totalCompleted}</p>
+          </div>
+
+          <div className="bg-gray-50 p-4 rounded-lg flex flex-col items-center justify-center">
+            <div className="mb-2 text-yellow-600">
+              <Clock size={24} />
+            </div>
+            <h3 className="font-semibold text-gray-700 mb-1 text-center">In Progress</h3>
+            <p className="text-3xl font-bold text-yellow-600">{statistics.inProgress}</p>
+          </div>
+
+          <div className="bg-gray-50 p-4 rounded-lg flex flex-col items-center justify-center">
+            <div className="mb-2 text-blue-600">
+              <Calendar size={24} />
+            </div>
+            <h3 className="font-semibold text-gray-700 mb-1 text-center">Not Started</h3>
+            <p className="text-3xl font-bold text-blue-600">{statistics.notStarted}</p>
+          </div>
+        </div>
+
+        <div className="mt-6">
+          <h3 className="font-semibold text-gray-700 mb-2">Overall Learning Progress</h3>
+          <ProgressBar 
+            progress={totalProgress} 
+            height={12} 
+            showPercentage={true}
+            color={totalProgress < 30 ? 'bg-red-500' : totalProgress < 70 ? 'bg-yellow-500' : 'bg-green-500'}
+          />
+          <div className="mt-2 text-sm text-gray-600">
+            {totalProgress < 30 ? 'Just getting started! Keep going!' : 
+             totalProgress < 70 ? 'You\'re making good progress!' : 
+             totalProgress < 100 ? 'Almost there! Keep up the great work!' : 
+             'Congratulations on completing all your courses!'}
           </div>
         </div>
       </div>
@@ -129,7 +187,30 @@ const UserDashboard: React.FC = () => {
                 </div>
                 
                 <div className="mb-4">
-                  <ProgressBar progress={enrolledCourse.progress} />
+                  <div className="flex justify-between items-center mb-1">
+                    <span className={`text-sm font-medium ${
+                      enrolledCourse.progress === 0 ? 'text-gray-500' : 
+                      enrolledCourse.progress < 25 ? 'text-red-600' : 
+                      enrolledCourse.progress < 75 ? 'text-yellow-600' : 
+                      enrolledCourse.progress < 100 ? 'text-blue-600' : 
+                      'text-green-600'
+                    }`}>
+                      {enrolledCourse.progress === 0 ? 'Not Started' : 
+                      enrolledCourse.progress < 25 ? 'Just Started' : 
+                      enrolledCourse.progress < 75 ? 'In Progress' : 
+                      enrolledCourse.progress < 100 ? 'Almost Complete' : 
+                      'Completed'}
+                    </span>
+                    <span className="text-sm font-medium text-gray-700">{enrolledCourse.progress}%</span>
+                  </div>
+                  <ProgressBar 
+                    progress={enrolledCourse.progress} 
+                    color={
+                      enrolledCourse.progress < 25 ? 'bg-red-500' : 
+                      enrolledCourse.progress < 75 ? 'bg-yellow-500' : 
+                      'bg-green-500'
+                    }
+                  />
                 </div>
                 
                 <div className="text-sm text-gray-600 mb-4">
@@ -141,7 +222,9 @@ const UserDashboard: React.FC = () => {
                   to={`/courses/${enrolledCourse.course._id}`} 
                   className="block w-full text-center bg-primary-600 text-white py-2 rounded hover:bg-primary-700 transition"
                 >
-                  Continue Learning
+                  {enrolledCourse.progress === 0 ? 'Start Course' : 
+                   enrolledCourse.progress === 100 ? 'Review Course' : 
+                   'Continue Learning'}
                 </Link>
               </div>
             </div>

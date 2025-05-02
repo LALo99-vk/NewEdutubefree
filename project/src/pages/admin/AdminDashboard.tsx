@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Users, BookOpen, List, Plus, Search, 
-  BarChart, TrendingUp, UserPlus, Filter, Eye, Edit, Trash,
-  PieChart, Activity
+  Edit, Trash,
+  Activity, Eye
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import ProgressBar from '../../components/ui/ProgressBar';
 
@@ -52,6 +52,7 @@ interface Category {
 }
 
 interface CourseProgress {
+  courseId: string;
   courseName: string;
   averageProgress: number;
   totalStudents: number;
@@ -124,7 +125,6 @@ const AdminDashboard: React.FC = () => {
         setCategories(categoriesData);
 
         // Calculate course progress statistics
-        // In a real app, you might have a dedicated endpoint for this
         const progressStats = coursesData.map((course: Course) => {
           const enrolledUsers = usersData.filter((user: User) => 
             user.enrolledCourses && user.enrolledCourses.some((ec: { course: { _id: string } }) => 
@@ -143,10 +143,11 @@ const AdminDashboard: React.FC = () => {
               return sum + (courseEnrollment?.progress || 0);
             }, 0);
             
-            avgProgress = totalProgress / totalEnrolled;
+            avgProgress = Math.round(totalProgress / totalEnrolled);
           }
           
           return {
+            courseId: course._id,
             courseName: course.title,
             averageProgress: avgProgress,
             totalStudents: totalEnrolled
@@ -154,53 +155,63 @@ const AdminDashboard: React.FC = () => {
         });
         
         setCourseProgress(progressStats);
+        setIsLoading(false);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
         console.error('Error fetching data:', err);
-      } finally {
+        setError(err instanceof Error ? err.message : 'An unknown error occurred');
         setIsLoading(false);
       }
     };
 
     fetchData();
   }, []);
-  
+
   const stats = {
     totalCourses: courses.length,
     totalUsers: users.length,
     totalLessons: courses.reduce((sum, course) => {
       return sum + course.modules.reduce((moduleSum, module) => moduleSum + module.lessons.length, 0);
     }, 0),
-    totalCategories: categories.length,
+    totalCategories: categories.length
   };
-  
-  // Filter courses based on search query
-  const filteredCourses = courses.filter(course => 
-    course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    course.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    course.instructor.toLowerCase().includes(searchQuery.toLowerCase())
-  );
   
   // Calculate average course completion for all users
   const calculateOverallProgress = () => {
-    if (users.length === 0) return 0;
+    if (!users.length || !courses.length) return [];
     
-    const usersWithCourses = users.filter(u => u.enrolledCourses && u.enrolledCourses.length > 0);
-    if (usersWithCourses.length === 0) return 0;
-    
-    const totalProgress = usersWithCourses.reduce((sum: number, u: User) => {
-      if (!u.enrolledCourses) return sum;
+    const courseProgressData: CourseProgress[] = courses.map((course: Course) => {
+      const enrolledUsers = users.filter((user: User) => 
+        user.enrolledCourses && user.enrolledCourses.some((ec: { course: { _id: string } }) => 
+          ec.course._id === course._id
+        )
+      );
       
-      const userAvgProgress = u.enrolledCourses.reduce(
-        (courseSum: number, enrollment: { progress: number }) => courseSum + enrollment.progress, 0
-      ) / u.enrolledCourses.length;
+      const totalEnrolled = enrolledUsers.length;
+      let avgProgress = 0;
       
-      return sum + userAvgProgress;
-    }, 0);
+      if (totalEnrolled > 0) {
+        const totalProgress = enrolledUsers.reduce((sum: number, user: User) => {
+          const courseEnrollment = user.enrolledCourses?.find((ec: { course: { _id: string } }) => 
+            ec.course._id === course._id
+          );
+          return sum + (courseEnrollment?.progress || 0);
+        }, 0);
+        
+        avgProgress = Math.round(totalProgress / totalEnrolled);
+      }
+      
+      return {
+        courseId: course._id,
+        courseName: course.title,
+        averageProgress: avgProgress,
+        totalStudents: totalEnrolled
+      };
+    });
     
-    return Math.round(totalProgress / usersWithCourses.length);
+    // Sort by popularity (number of students)
+    return courseProgressData.sort((a, b) => b.totalStudents - a.totalStudents);
   };
-  
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -292,8 +303,15 @@ const AdminDashboard: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="font-semibold text-gray-700 mb-2">Overall Course Completion</h3>
-                  <p className="text-3xl font-bold text-primary-600 mb-2">{calculateOverallProgress()}%</p>
-                  <ProgressBar progress={calculateOverallProgress()} height={10} />
+                  <p className="text-3xl font-bold text-primary-600 mb-2">
+                    {calculateOverallProgress().length > 0 ? 
+                      Math.round(calculateOverallProgress().reduce((sum, cp) => sum + cp.averageProgress, 0) / calculateOverallProgress().length) : 0}%
+                  </p>
+                  <ProgressBar 
+                    progress={calculateOverallProgress().length > 0 ? 
+                      Math.round(calculateOverallProgress().reduce((sum, cp) => sum + cp.averageProgress, 0) / calculateOverallProgress().length) : 0} 
+                    height={10} 
+                  />
                 </div>
                 <div className="bg-gray-50 p-4 rounded-lg">
                   <h3 className="font-semibold text-gray-700 mb-2">Active Learners</h3>
@@ -381,239 +399,166 @@ const AdminDashboard: React.FC = () => {
         
         {activeTab === 'overview' && (
           <>
-            {/* Stats */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-primary-100 rounded-md p-3 text-primary-600">
-                    <BookOpen className="h-6 w-6" />
-                  </div>
-                  <div className="ml-5">
-                    <p className="text-sm font-medium text-gray-500 truncate">Total Courses</p>
-                    <p className="mt-1 text-3xl font-semibold text-gray-900">{stats.totalCourses}</p>
-                  </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+              <div className="bg-white rounded-lg shadow p-6 flex items-center">
+                <div className="rounded-full bg-primary-100 p-3 mr-4">
+                  <Users className="h-8 w-8 text-primary-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 font-medium">Total Users</p>
+                  <h3 className="text-2xl font-bold">{users.length}</h3>
                 </div>
               </div>
               
-              <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-secondary-100 rounded-md p-3 text-secondary-600">
-                    <Users className="h-6 w-6" />
-                  </div>
-                  <div className="ml-5">
-                    <p className="text-sm font-medium text-gray-500 truncate">Total Users</p>
-                    <p className="mt-1 text-3xl font-semibold text-gray-900">{stats.totalUsers}</p>
-                  </div>
+              <div className="bg-white rounded-lg shadow p-6 flex items-center">
+                <div className="rounded-full bg-green-100 p-3 mr-4">
+                  <BookOpen className="h-8 w-8 text-green-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 font-medium">Total Courses</p>
+                  <h3 className="text-2xl font-bold">{courses.length}</h3>
                 </div>
               </div>
               
-              <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-accent-100 rounded-md p-3 text-accent-600">
-                    <List className="h-6 w-6" />
-                  </div>
-                  <div className="ml-5">
-                    <p className="text-sm font-medium text-gray-500 truncate">Total Lessons</p>
-                    <p className="mt-1 text-3xl font-semibold text-gray-900">{stats.totalLessons}</p>
-                  </div>
+              <div className="bg-white rounded-lg shadow p-6 flex items-center">
+                <div className="rounded-full bg-blue-100 p-3 mr-4">
+                  <List className="h-8 w-8 text-blue-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 font-medium">Categories</p>
+                  <h3 className="text-2xl font-bold">{categories.length}</h3>
                 </div>
               </div>
               
-              <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 bg-yellow-100 rounded-md p-3 text-yellow-600">
-                    <Filter className="h-6 w-6" />
-                  </div>
-                  <div className="ml-5">
-                    <p className="text-sm font-medium text-gray-500 truncate">Categories</p>
-                    <p className="mt-1 text-3xl font-semibold text-gray-900">{stats.totalCategories}</p>
-                  </div>
+              <div className="bg-white rounded-lg shadow p-6 flex items-center">
+                <div className="rounded-full bg-yellow-100 p-3 mr-4">
+                  <Activity className="h-8 w-8 text-yellow-600" />
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 font-medium">Avg. Completion</p>
+                  <h3 className="text-2xl font-bold">
+                    {users.length > 0 ? 
+                      Math.round(
+                        users.reduce((sum, user) => {
+                          if (!user.enrolledCourses || user.enrolledCourses.length === 0) return sum;
+                          const userAvgProgress = user.enrolledCourses.reduce((sum, course) => sum + course.progress, 0) / user.enrolledCourses.length;
+                          return sum + userAvgProgress;
+                        }, 0) / users.filter(user => user.enrolledCourses && user.enrolledCourses.length > 0).length || 1
+                      ) : 0
+                    }%
+                  </h3>
                 </div>
               </div>
             </div>
-            
-            {/* Charts */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-              <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">User Registrations</h3>
-                  <div className="text-sm text-gray-500">Last 7 days</div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Course Completion Rates</h3>
                 </div>
-                <div className="flex items-center">
-                  <div className="flex-shrink-0 text-primary-600">
-                    <TrendingUp className="h-5 w-5" />
+                {courseProgress.length > 0 ? (
+                  <div className="space-y-4">
+                    {courseProgress.slice(0, 5).map((course, index) => (
+                      <div key={index}>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-sm font-medium text-gray-700 truncate" style={{ maxWidth: '70%' }}>
+                            {course.courseName}
+                          </span>
+                          <span className="text-xs text-gray-500">
+                            {course.totalStudents} {course.totalStudents === 1 ? 'student' : 'students'}
+                          </span>
+                        </div>
+                        <div className="flex items-center">
+                          <div className="flex-grow mr-2">
+                            <ProgressBar 
+                              progress={course.averageProgress} 
+                              color={
+                                course.averageProgress < 30 ? 'bg-red-500' : 
+                                course.averageProgress < 70 ? 'bg-yellow-500' : 
+                                'bg-green-500'
+                              }
+                            />
+                          </div>
+                          <span className="text-sm font-medium">{course.averageProgress}%</span>
+                        </div>
+                      </div>
+                    ))}
+                    {courseProgress.length > 5 && (
+                      <div className="text-center mt-4">
+                        <button 
+                          onClick={() => setActiveTab('courses')}
+                          className="text-sm text-primary-600 hover:text-primary-800"
+                        >
+                          View all courses
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div className="ml-2">
-                    <span className="text-green-600 text-sm font-medium">+5.2%</span>
-                    <span className="text-gray-500 text-sm ml-1">vs last week</span>
-                  </div>
-                </div>
-                <div className="mt-4 h-64 flex items-end justify-between">
-                  {[65, 59, 80, 81, 56, 55, 70].map((value, index) => (
-                    <div key={index} className="w-8 bg-primary-100 rounded-t relative" style={{ height: `${value}%` }}>
-                      <div 
-                        className="absolute inset-x-0 top-0 bg-primary-500 rounded-t transition-all duration-500"
-                        style={{ height: `${value}%` }}
-                      ></div>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 flex justify-between text-xs text-gray-500">
-                  <span>Mon</span>
-                  <span>Tue</span>
-                  <span>Wed</span>
-                  <span>Thu</span>
-                  <span>Fri</span>
-                  <span>Sat</span>
-                  <span>Sun</span>
-                </div>
+                ) : (
+                  <p className="text-gray-500">No course data available.</p>
+                )}
               </div>
               
-              <div className="bg-white rounded-lg p-6 shadow-sm border border-gray-200">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">Popular Categories</h3>
-                  <div className="text-sm text-gray-500">By courses</div>
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="text-lg font-semibold">Recent User Enrollments</h3>
                 </div>
-                <div className="mt-4 space-y-4">
-                  <div>
-                    <div className="flex items-center justify-between text-sm font-medium">
-                      <span>Web Development</span>
-                      <span>42 courses</span>
-                    </div>
-                    <div className="mt-2 relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="absolute inset-y-0 left-0 bg-primary-500 rounded-full" style={{ width: '65%' }}></div>
-                    </div>
+                {users.length > 0 ? (
+                  <div className="space-y-4">
+                    {users
+                      .filter(user => user.enrolledCourses && user.enrolledCourses.length > 0)
+                      .sort((a, b) => {
+                        // This is a simple sorting, you might want to sort by enrollment date if available
+                        return (b.enrolledCourses?.length || 0) - (a.enrolledCourses?.length || 0);
+                      })
+                      .slice(0, 5)
+                      .map((user, index) => (
+                        <div key={index} className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
+                              <span className="text-primary-600 font-medium">{user.name.charAt(0).toUpperCase()}</span>
+                            </div>
+                            <div className="ml-4">
+                              <p className="font-medium">{user.name}</p>
+                              <p className="text-sm text-gray-500">{user.enrolledCourses?.length || 0} courses</p>
+                            </div>
+                          </div>
+                          <div>
+                            {user.enrolledCourses && user.enrolledCourses.length > 0 && (
+                              <div className="text-right">
+                                <p className="text-sm font-medium">
+                                  {Math.round(
+                                    user.enrolledCourses.reduce((sum, course) => sum + course.progress, 0) / 
+                                    user.enrolledCourses.length
+                                  )}% avg
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    }
+                    {users.filter(user => user.enrolledCourses && user.enrolledCourses.length > 0).length > 5 && (
+                      <div className="text-center mt-4">
+                        <button 
+                          onClick={() => setActiveTab('users')}
+                          className="text-sm text-primary-600 hover:text-primary-800"
+                        >
+                          View all users
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <div>
-                    <div className="flex items-center justify-between text-sm font-medium">
-                      <span>Data Science</span>
-                      <span>28 courses</span>
-                    </div>
-                    <div className="mt-2 relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="absolute inset-y-0 left-0 bg-primary-500 rounded-full" style={{ width: '50%' }}></div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between text-sm font-medium">
-                      <span>Machine Learning</span>
-                      <span>23 courses</span>
-                    </div>
-                    <div className="mt-2 relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="absolute inset-y-0 left-0 bg-primary-500 rounded-full" style={{ width: '40%' }}></div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between text-sm font-medium">
-                      <span>Mobile Development</span>
-                      <span>19 courses</span>
-                    </div>
-                    <div className="mt-2 relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="absolute inset-y-0 left-0 bg-primary-500 rounded-full" style={{ width: '32%' }}></div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between text-sm font-medium">
-                      <span>UI/UX Design</span>
-                      <span>15 courses</span>
-                    </div>
-                    <div className="mt-2 relative h-4 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="absolute inset-y-0 left-0 bg-primary-500 rounded-full" style={{ width: '25%' }}></div>
-                    </div>
-                  </div>
-                </div>
+                ) : (
+                  <p className="text-gray-500">No user enrollment data available.</p>
+                )}
               </div>
             </div>
-            
-            {/* Recent activity */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              <div className="px-6 py-5 border-b border-gray-200">
-                <h3 className="text-lg font-medium text-gray-900">Recent Activity</h3>
+
+            <div className="bg-white rounded-lg shadow p-6 mb-8">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold">Enrollment & Progress Overview</h3>
               </div>
-              <div className="divide-y divide-gray-200">
-                <div className="px-6 py-4">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-green-100 rounded-full p-2 text-green-600">
-                      <UserPlus className="h-5 w-5" />
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-900">New user registered</p>
-                      <p className="text-sm text-gray-500">john.doe@example.com</p>
-                    </div>
-                    <div className="ml-auto text-sm text-gray-500">5 minutes ago</div>
-                  </div>
-                </div>
-                <div className="px-6 py-4">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-primary-100 rounded-full p-2 text-primary-600">
-                      <BookOpen className="h-5 w-5" />
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-900">New course published</p>
-                      <p className="text-sm text-gray-500">Python for Data Science and Machine Learning</p>
-                    </div>
-                    <div className="ml-auto text-sm text-gray-500">1 hour ago</div>
-                  </div>
-                </div>
-                <div className="px-6 py-4">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-yellow-100 rounded-full p-2 text-yellow-600">
-                      <Edit className="h-5 w-5" />
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-900">Course updated</p>
-                      <p className="text-sm text-gray-500">Complete React Developer in 2025</p>
-                    </div>
-                    <div className="ml-auto text-sm text-gray-500">3 hours ago</div>
-                  </div>
-                </div>
-                <div className="px-6 py-4">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 bg-green-100 rounded-full p-2 text-green-600">
-                      <UserPlus className="h-5 w-5" />
-                    </div>
-                    <div className="ml-4">
-                      <p className="text-sm font-medium text-gray-900">New user registered</p>
-                      <p className="text-sm text-gray-500">jane.smith@example.com</p>
-                    </div>
-                    <div className="ml-auto text-sm text-gray-500">5 hours ago</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </>
-        )}
-        
-        {activeTab === 'courses' && (
-          <>
-            <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div className="relative flex-1 max-w-md">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Search className="h-5 w-5 text-gray-400" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="Search courses..."
-                  className="input pl-10 w-full"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-              </div>
-              <div className="flex space-x-3">
-                <select className="input">
-                  <option>All Categories</option>
-                  <option>Web Development</option>
-                  <option>Data Science</option>
-                  <option>Mobile Development</option>
-                  <option>UI/UX Design</option>
-                </select>
-                <button className="btn btn-primary flex items-center">
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Course
-                </button>
-              </div>
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -622,214 +567,163 @@ const AdminDashboard: React.FC = () => {
                         Course
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Category
+                        Students
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Instructor
+                        Progress
                       </th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Status
                       </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Students
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Rating
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredCourses.map(course => (
-                      <tr key={course.id} className="hover:bg-gray-50">
+                    {courseProgress.slice(0, 10).map((course, index) => (
+                      <tr key={index}>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              <img className="h-10 w-10 rounded object-cover" src={course.thumbnail} alt="" />
-                            </div>
-                            <div className="ml-4">
-                              <div className="text-sm font-medium text-gray-900">{course.title}</div>
-                              <div key={course._id} className="overflow-hidden shadow-md rounded-lg bg-white">
-                                <div className="p-6">
-                                  <div className="flex items-start">
-                                    <div className="flex-1">
-                                      <h3 className="text-lg font-semibold text-gray-900">{course.title}</h3>
-                                      <p className="mt-1 text-sm text-gray-500">{course.instructor}</p>
-                                    </div>
-                                    <div>
-                                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${course.level === 'beginner' ? 'bg-green-100 text-green-800' : course.level === 'intermediate' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
-                                        {course.level}
-                                      </span>
-                                    </div>
-                                  </div>
-                                  <div className="mt-3">
-                                    <p className="text-sm text-gray-500 line-clamp-2">{course.description}</p>
-                                  </div>
-                                  <div className="mt-4 flex items-center">
-                                    <div className="flex text-yellow-400">
-                                      <div className="flex items-center">
-                                        <span className="text-sm font-medium">{course.rating.toFixed(1)}</span>
-                                      </div>
-                                    </div>
-                                    <div className="ml-auto flex">
-                                      <button
-                                        onClick={() => navigate(`/admin/courses/${course._id}/edit`)}
-                                        className="text-gray-400 hover:text-primary-600 mr-2"
-                                      >
-                                        <Edit className="h-5 w-5" />
-                                      </button>
-                                      <button
-                                        className="text-gray-400 hover:text-red-600"
-                                      >
-                                        <Trash className="h-5 w-5" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
+                          <div className="font-medium text-gray-900 truncate" style={{ maxWidth: '250px' }}>
+                            {course.courseName}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="badge badge-primary">{course.category}</span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {course.instructor}
+                          <div className="text-sm text-gray-900">{course.totalStudents}</div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className="badge bg-green-100 text-green-800">
-                            Published
+                          <div className="w-48">
+                            <ProgressBar 
+                              progress={course.averageProgress} 
+                              color={
+                                course.averageProgress < 30 ? 'bg-red-500' : 
+                                course.averageProgress < 70 ? 'bg-yellow-500' : 
+                                'bg-green-500'
+                              }
+                            />
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                            ${course.averageProgress < 30 ? 'bg-red-100 text-red-800' : 
+                              course.averageProgress < 70 ? 'bg-yellow-100 text-yellow-800' : 
+                              'bg-green-100 text-green-800'}`}>
+                            {course.averageProgress < 30 ? 'Low Completion' : 
+                             course.averageProgress < 70 ? 'In Progress' : 
+                             'High Completion'}
                           </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {course.totalStudents.toLocaleString()}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center text-sm text-gray-900">
-                            <Star className="h-4 w-4 text-yellow-400 mr-1" />
-                            {course.rating.toFixed(1)}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex space-x-2">
-                            <button 
-                              className="text-primary-600 hover:text-primary-900"
-                              onClick={() => navigate(`/courses/${course.id}`)}
-                            >
-                              <Eye className="h-5 w-5" />
-                            </button>
-                            <button className="text-secondary-600 hover:text-secondary-900">
-                              <Edit className="h-5 w-5" />
-                            </button>
-                            <button className="text-red-600 hover:text-red-900">
-                              <Trash className="h-5 w-5" />
-                            </button>
-                          </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-              <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
-                <div className="flex-1 flex justify-between sm:hidden">
-                  <button className="btn btn-outline py-2">Previous</button>
-                  <button className="btn btn-outline py-2">Next</button>
-                </div>
-                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm text-gray-700">
-                      Showing <span className="font-medium">1</span> to <span className="font-medium">10</span> of{' '}
-                      <span className="font-medium">{filteredCourses.length}</span> results
-                    </p>
-                  </div>
-                  <div>
-                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                      >
-                        <span className="sr-only">Previous</span>
-                        <svg
-                          className="h-5 w-5"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </a>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        1
-                      </a>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-primary-50 text-sm font-medium text-primary-600 hover:bg-primary-100"
-                      >
-                        2
-                      </a>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        3
-                      </a>
-                      <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
-                        ...
-                      </span>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        8
-                      </a>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        9
-                      </a>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        10
-                      </a>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                      >
-                        <span className="sr-only">Next</span>
-                        <svg
-                          className="h-5 w-5"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </a>
-                    </nav>
-                  </div>
-                </div>
-              </div>
             </div>
           </>
+        )}
+        
+        {activeTab === 'courses' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-gray-800 mb-4 sm:mb-0">Course Management</h2>
+              <div className="flex items-center space-x-2">
+                <div className="relative">
+                  <input
+                    type="text"
+                    placeholder="Search courses..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  />
+                  <div className="absolute left-3 top-2.5">
+                    <Search className="h-5 w-5 text-gray-400" />
+                  </div>
+                </div>
+                <Link to="/admin/courses/new" className="bg-primary-600 text-white p-2 rounded-lg hover:bg-primary-700">
+                  <Plus className="h-5 w-5" />
+                </Link>
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Title
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Category
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Students
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Progress
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {courses
+                    .filter(course => 
+                      course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      (course.description && course.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                      (course.instructor && course.instructor.toLowerCase().includes(searchQuery.toLowerCase())) ||
+                      (course.category?.name && course.category.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                    )
+                    .map((course) => {
+                      const courseProgressItem = courseProgress.find(cp => cp.courseId === course._id);
+                      return (
+                        <tr key={course._id}>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="flex items-center">
+                              {course.thumbnail ? (
+                                <img src={course.thumbnail} alt={course.title} className="h-10 w-10 rounded object-cover mr-3" />
+                              ) : (
+                                <div className="h-10 w-10 rounded bg-gray-200 flex items-center justify-center mr-3">
+                                  <BookOpen className="h-5 w-5 text-gray-500" />
+                                </div>
+                              )}
+                              <div className="font-medium text-gray-900">{course.title}</div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                              {course.category?.name || 'Uncategorized'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {courseProgressItem?.totalStudents || 0}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <div className="w-48">
+                              <ProgressBar 
+                                progress={courseProgressItem?.averageProgress || 0} 
+                                color={
+                                  !courseProgressItem || courseProgressItem.averageProgress < 30 ? 'bg-red-500' : 
+                                  courseProgressItem.averageProgress < 70 ? 'bg-yellow-500' : 
+                                  'bg-green-500'
+                                }
+                              />
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
+                            <Link to={`/courses/${course._id}`} className="text-blue-600 hover:text-blue-900">
+                              <Eye className="h-5 w-5 inline" />
+                            </Link>
+                            <Link to={`/admin/courses/edit/${course._id}`} className="text-indigo-600 hover:text-indigo-900">
+                              <Edit className="h-5 w-5 inline" />
+                            </Link>
+                            <button className="text-red-600 hover:text-red-900">
+                              <Trash className="h-5 w-5 inline" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         )}
         
         {activeTab === 'users' && (
@@ -895,7 +789,7 @@ const AdminDashboard: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
                             <div className="flex-shrink-0 h-10 w-10">
-                              <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 font-medium">
+                              <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center text-lg text-primary-600 font-bold">
                                 {user.name.charAt(0)}
                               </div>
                             </div>

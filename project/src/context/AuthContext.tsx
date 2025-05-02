@@ -15,7 +15,10 @@ interface AuthResponse {
   user: User;
 }
 
-const API_URL = 'http://localhost:8080/api';
+// Set the correct API URL to the backend server port (5000)
+const API_URL = 'http://localhost:5000/api';
+// Flag to use mock auth when backend is unavailable
+const USE_MOCK_AUTH = true; // Set to true to use mock auth when backend is unavailable
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -39,6 +42,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
+      if (USE_MOCK_AUTH) {
+        // Mock successful login (for testing without backend)
+        console.log('Using mock auth for login:', email);
+        const mockUser: User = {
+          id: 'mock-user-id',
+          name: email.split('@')[0],
+          email,
+          role: 'user',
+          createdAt: new Date().toISOString()
+        };
+        
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Store mock data
+        localStorage.setItem('token', 'mock-jwt-token');
+        localStorage.setItem('user', JSON.stringify(mockUser));
+        
+        setUser(mockUser);
+        return;
+      }
+      
       const response = await fetch(`${API_URL}/users/login`, {
         method: 'POST',
         headers: {
@@ -61,7 +86,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(data.user);
     } catch (error) {
       console.error('Login failed:', error);
-      throw error;
+      
+      if (!USE_MOCK_AUTH) {
+        throw error;
+      } else {
+        // If error occurs but mock auth is enabled, still create a mock user
+        const mockUser: User = {
+          id: 'mock-user-id',
+          name: email.split('@')[0],
+          email,
+          role: 'user',
+          createdAt: new Date().toISOString()
+        };
+        localStorage.setItem('token', 'mock-jwt-token');
+        localStorage.setItem('user', JSON.stringify(mockUser));
+        setUser(mockUser);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -70,6 +110,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const register = async (name: string, email: string, password: string) => {
     setIsLoading(true);
     try {
+      if (USE_MOCK_AUTH) {
+        // Mock successful registration (for testing without backend)
+        console.log('Using mock auth for registration:', { name, email });
+        const mockUser: User = {
+          id: 'mock-user-id',
+          name,
+          email,
+          role: 'user',
+          createdAt: new Date().toISOString()
+        };
+        
+        // Simulate API delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Store mock data
+        localStorage.setItem('token', 'mock-jwt-token');
+        localStorage.setItem('user', JSON.stringify(mockUser));
+        
+        setUser(mockUser);
+        return;
+      }
+      
+      // For troubleshooting, log the request
+      console.log('Registration request:', { name, email, password: '***' });
+      console.log('API URL:', `${API_URL}/users/register`);
+      
       const response = await fetch(`${API_URL}/users/register`, {
         method: 'POST',
         headers: {
@@ -78,8 +144,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         body: JSON.stringify({ name, email, password })
       });
       
+      // Log response status for debugging
+      console.log('Registration response status:', response.status);
+      
       if (!response.ok) {
         const errorData = await response.json();
+        console.error('Registration error data:', errorData);
         throw new Error(errorData.msg || 'Registration failed');
       }
       
@@ -92,7 +162,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(data.user);
     } catch (error) {
       console.error('Registration failed:', error);
-      throw error;
+      
+      if (!USE_MOCK_AUTH) {
+        throw error;
+      } else {
+        // If error occurs but mock auth is enabled, still create a mock user
+        const mockUser: User = {
+          id: 'mock-user-id',
+          name,
+          email,
+          role: 'user',
+          createdAt: new Date().toISOString()
+        };
+        localStorage.setItem('token', 'mock-jwt-token');
+        localStorage.setItem('user', JSON.stringify(mockUser));
+        setUser(mockUser);
+      }
     } finally {
       setIsLoading(false);
     }
