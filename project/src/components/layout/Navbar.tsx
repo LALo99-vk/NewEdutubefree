@@ -73,12 +73,7 @@ const Navbar: React.FC = () => {
               >
                 Courses
               </Link>
-              <Link
-                to="/categories"
-                className={getLinkClass('/categories')}
-              >
-                Categories
-              </Link>
+              
               {user?.role === 'admin' && (
                 <Link
                   to="/admin"
@@ -111,6 +106,7 @@ const Navbar: React.FC = () => {
                   <button
                     onClick={() => navigate('/profile')}
                     className="text-gray-500 hover:text-gray-700 p-1 rounded-full flex items-center text-sm focus:outline-none"
+                    aria-label="View Profile"
                   >
                     <span className="mr-2">{user?.name}</span>
                     <User className="h-6 w-6" />
@@ -118,6 +114,7 @@ const Navbar: React.FC = () => {
                   <button
                     onClick={handleLogout}
                     className="ml-4 text-gray-500 hover:text-gray-700 p-1 rounded-full flex items-center text-sm focus:outline-none"
+                    aria-label="Logout"
                   >
                     <LogOut className="h-5 w-5" />
                   </button>

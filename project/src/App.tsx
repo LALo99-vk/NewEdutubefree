@@ -10,6 +10,7 @@ import CoursesPage from './pages/courses/CoursesPage';
 import CourseDetailPage from './pages/courses/CourseDetailPage';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import CategoriesPage from './pages/categories/CategoriesPage';
+import UserDashboard from './pages/user/UserDashboard';
 
 // Protected route component
 const ProtectedRoute = ({ children, requireAdmin = false }: { children: React.ReactNode, requireAdmin?: boolean }) => {
@@ -48,6 +49,7 @@ function App() {
               <Route path="/courses" element={<ProtectedRoute><CoursesPage /></ProtectedRoute>} />
               <Route path="/courses/:id" element={<ProtectedRoute><CourseDetailPage /></ProtectedRoute>} />
               <Route path="/categories" element={<ProtectedRoute><CategoriesPage /></ProtectedRoute>} />
+              <Route path="/profile" element={<ProtectedRoute><UserDashboard /></ProtectedRoute>} />
               <Route 
                 path="/admin/*" 
                 element={

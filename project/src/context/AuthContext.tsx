@@ -18,7 +18,7 @@ interface AuthResponse {
 // Set the correct API URL to the backend server port (5000)
 const API_URL = 'http://localhost:5000/api';
 // Flag to use mock auth when backend is unavailable
-const USE_MOCK_AUTH = true; // Set to true to use mock auth when backend is unavailable
+const USE_MOCK_AUTH = false; // Set to true to use mock auth when backend is unavailable
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 

@@ -87,6 +87,16 @@ app.get('/api/ping', (req, res) => {
   res.status(200).send('pong');
 });
 
+// Add a specific test endpoint for the profile issue
+app.get('/api/debug/auth-test', (req, res) => {
+  res.json({ 
+    message: 'Auth test endpoint is working',
+    timestamp: new Date().toISOString(),
+    server: 'EduTube API',
+    port: PORT
+  });
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
