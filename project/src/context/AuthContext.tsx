@@ -203,11 +203,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         
         // For admin registration, use specific naming
         const mockUser: User = {
-          id: role === 'admin' ? 'admin-user-id' : 'mock-user-id',
+          id: role === 'admin' ? 'admin-user-id' : `user-${Date.now()}`,
           name: role === 'admin' ? 'Administrator' : name,
           email,
           role: role, // Use the role parameter (defaults to 'user')
           createdAt: new Date().toISOString()
+        };
+        
+        // Additional fields for admin dashboard (will be stored in localStorage)
+        const mockUserExtended = {
+          ...mockUser,
+          _id: `user-${Date.now()}`,
+          status: 'active',
+          lastLogin: new Date().toISOString(),
         };
         
         // Simulate API delay
@@ -216,6 +224,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         // Store mock data
         localStorage.setItem('token', role === 'admin' ? 'mock-jwt-token-admin' : 'mock-jwt-token');
         localStorage.setItem('user', JSON.stringify(mockUser));
+        
+        // Save user to mockUsers list in localStorage for admin dashboard
+        const existingUsers = localStorage.getItem('mockUsers') || '[]';
+        let users = [];
+        try {
+          users = JSON.parse(existingUsers);
+        } catch (e) {
+          console.error('Error parsing mockUsers:', e);
+        }
+        
+        // Make sure we don't add duplicates
+        const userExists = users.some((u: any) => u.email === email);
+        if (!userExists) {
+          users.push(mockUserExtended);
+          localStorage.setItem('mockUsers', JSON.stringify(users));
+        }
         
         setUser(mockUser);
         return;

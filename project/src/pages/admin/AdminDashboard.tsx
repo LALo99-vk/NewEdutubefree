@@ -112,41 +112,7 @@ const MOCK_COURSES: Course[] = [
   }
 ];
 
-const MOCK_USERS: User[] = [
-  {
-    _id: 'user-1',
-    name: 'User One',
-    email: 'user1@example.com',
-    role: 'student',
-    status: 'active',
-    createdAt: '2023-01-01T00:00:00Z',
-    enrolledCourses: [
-      { course: { _id: 'mock-course-1', title: 'Introduction to React' }, progress: 65 }
-    ],
-    lastLogin: '2023-05-01T14:30:00Z'
-  },
-  {
-    _id: 'user-2',
-    name: 'Jane Smith',
-    email: 'jane.smith@example.com',
-    role: 'student',
-    status: 'active',
-    createdAt: '2023-02-15T00:00:00Z',
-    enrolledCourses: [
-      { course: { _id: 'mock-course-2', title: 'Advanced JavaScript Patterns' }, progress: 25 }
-    ],
-    lastLogin: '2023-04-20T09:15:00Z'
-  },
-  {
-    _id: 'user-3',
-    name: 'David Johnson',
-    email: 'david.j@example.com',
-    role: 'student',
-    status: 'blocked',
-    createdAt: '2023-03-10T00:00:00Z',
-    lastLogin: '2023-03-12T16:45:00Z'
-  }
-];
+// No longer using mock users - using registered users from localStorage instead
 
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
@@ -355,7 +321,29 @@ const AdminDashboard: React.FC = () => {
             setCourses(MOCK_COURSES);
           }
           
-          setUsers(MOCK_USERS);
+          // Get registered users from localStorage
+          const registeredUsers = localStorage.getItem('mockUsers');
+          if (registeredUsers) {
+            try {
+              const parsedUsers = JSON.parse(registeredUsers);
+              // Add status and lastLogin attributes if they don't exist
+              const formattedUsers = parsedUsers.map((user: any) => ({
+                ...user,
+                _id: user._id || `user-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                status: user.status || 'active',
+                lastLogin: user.lastLogin || new Date().toISOString(),
+                role: user.role || 'student',
+                enrolledCourses: user.enrolledCourses || []
+              }));
+              setUsers(formattedUsers);
+            } catch (e) {
+              console.error('Error parsing registered users:', e);
+              setUsers([]);
+            }
+          } else {
+            // If no registered users found, don't use mock data - show empty state
+            setUsers([]);
+          }
           
           // Set default categories if error occurs
           const defaultCategories = [
@@ -374,7 +362,28 @@ const AdminDashboard: React.FC = () => {
         console.error('Error in overall data fetching:', err);
         setError(err instanceof Error ? err.message : 'An unknown error occurred');
         setCourses(MOCK_COURSES);
-        setUsers(MOCK_USERS);
+        
+        // Get registered users from localStorage as fallback
+        const registeredUsers = localStorage.getItem('mockUsers');
+        if (registeredUsers) {
+          try {
+            const parsedUsers = JSON.parse(registeredUsers);
+            const formattedUsers = parsedUsers.map((user: any) => ({
+              ...user,
+              _id: user._id || `user-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              status: user.status || 'active',
+              lastLogin: user.lastLogin || new Date().toISOString(),
+              role: user.role || 'student',
+              enrolledCourses: user.enrolledCourses || []
+            }));
+            setUsers(formattedUsers);
+          } catch (e) {
+            console.error('Error parsing registered users:', e);
+            setUsers([]);
+          }
+        } else {
+          setUsers([]);
+        }
         
         // Set default categories if error occurs
         const defaultCategories = [
