@@ -1,43 +1,300 @@
-import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
-  Play, CheckCircle, Clock, Users, BookOpen, Star, 
-  ChevronDown, ChevronRight, ChevronUp
+  Play, CheckCircle, Clock, BookOpen, Star, 
+  ChevronDown, ChevronRight
 } from 'lucide-react';
-import { courses } from '../../data/mockData';
-import VideoPlayer from '../../components/ui/VideoPlayer';
+import { courses as mockCourses } from '../../data/mockData';
 import { Course, Lesson } from '../../types';
+import VideoPlaceholder from '../../components/ui/VideoPlaceholder';
 
 const CourseDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const videoRef = useRef<HTMLDivElement>(null);
   
   const [course, setCourse] = useState<Course | null>(null);
   const [currentLesson, setCurrentLesson] = useState<Lesson | null>(null);
   const [expandedModules, setExpandedModules] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+  const [progress, setProgress] = useState(0);
+  const [lessonsCompleted, setLessonsCompleted] = useState(0);
+  const [totalLessons, setTotalLessons] = useState(0);
+  const [courseProgress, setCourseProgress] = useState<number>(0);
+  const [completedLessons, setCompletedLessons] = useState<Set<string>>(new Set());
   
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      const foundCourse = courses.find(c => c.id === id);
-      if (foundCourse) {
-        setCourse(foundCourse);
-        // Set the first lesson as the current lesson
-        if (foundCourse.modules.length > 0 && foundCourse.modules[0].lessons.length > 0) {
-          setCurrentLesson(foundCourse.modules[0].lessons[0]);
-          // Expand the first module by default
-          setExpandedModules(new Set([foundCourse.modules[0].id]));
+    const loadCourse = async () => {
+      setIsLoading(true);
+      
+      try {
+        // First check if this is a course added through admin dashboard
+        const storedCourses = localStorage.getItem('adminCourses');
+        if (storedCourses) {
+          const parsedCourses = JSON.parse(storedCourses);
+          const adminCourse = parsedCourses.find((c: any) => c._id === id);
+          
+          if (adminCourse) {
+            // Convert admin course to expected format
+            const convertedCourse: Course = {
+              id: adminCourse._id,
+              title: adminCourse.title,
+              description: adminCourse.description || '',
+              instructor: adminCourse.instructor || 'Unknown Instructor',
+              thumbnail: adminCourse.thumbnail || 'https://via.placeholder.com/640x360?text=No+Image',
+              category: adminCourse.category?.name || 'Uncategorized',
+              level: adminCourse.level || 'beginner',
+              rating: adminCourse.rating || 4.5,
+              totalStudents: adminCourse.totalStudents || 0,
+              createdAt: adminCourse.createdAt || new Date().toISOString(),
+              updatedAt: adminCourse.updatedAt || new Date().toISOString(),
+              videoUrl: adminCourse.videoUrl || null,
+              duration: adminCourse.duration || '1h 30m',
+              // Create a simple module structure if none exists
+              modules: adminCourse.modules || [
+                {
+                  id: 'module-1',
+                  title: 'Introduction to Course',
+                  lessons: [
+                    {
+                      id: 'lesson-1',
+                      title: 'Course Overview',
+                      description: adminCourse.description || 'Overview of the course',
+                      duration: '15:20',
+                      videoUrl: adminCourse.videoUrl || ''
+                    },
+                    {
+                      id: 'lesson-2',
+                      title: 'Setting Up Your Environment',
+                      description: 'Learn how to set up your development environment',
+                      duration: '22:45',
+                      videoUrl: adminCourse.videoUrl || ''
+                    }
+                  ]
+                },
+                {
+                  id: 'module-2',
+                  title: 'Core Concepts',
+                  lessons: [
+                    {
+                      id: 'lesson-3',
+                      title: 'Understanding the Basics',
+                      description: 'Learn the fundamental concepts',
+                      duration: '18:30',
+                      videoUrl: adminCourse.videoUrl || ''
+                    }
+                  ]
+                }
+              ]
+            };
+            
+            setCourse(convertedCourse);
+            
+            // Calculate total lessons
+            const lessons = convertedCourse.modules.reduce((acc, module) => acc + module.lessons.length, 0);
+            setTotalLessons(lessons);
+            
+            // Set the first lesson as current or create a placeholder
+            if (convertedCourse.modules.length > 0 && convertedCourse.modules[0].lessons.length > 0) {
+              setCurrentLesson(convertedCourse.modules[0].lessons[0]);
+              setExpandedModules(new Set([convertedCourse.modules[0].id]));
+            }
+            
+            setIsLoading(false);
+            return; // Exit early if we found the course
+          }
+        }
+        
+        // If not found in localStorage, check mock courses
+        const foundCourse = mockCourses.find(c => c.id === id);
+        if (foundCourse) {
+          setCourse(foundCourse);
+          
+          // Calculate total lessons
+          const lessons = foundCourse.modules.reduce((acc, module) => acc + module.lessons.length, 0);
+          setTotalLessons(lessons);
+          
+          // Set the first lesson as the current lesson
+          if (foundCourse.modules.length > 0 && foundCourse.modules[0].lessons.length > 0) {
+            setCurrentLesson(foundCourse.modules[0].lessons[0]);
+            // Expand the first module by default
+            setExpandedModules(new Set([foundCourse.modules[0].id]));
+          }
+        }
+      } catch (error) {
+        console.error('Error loading course:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    if (id) {
+      loadCourse();
+    }
+  }, [id]);
+  
+  // Track course progress
+  useEffect(() => {
+    if (course) {
+      // Load completed lessons from localStorage
+      const savedProgress = localStorage.getItem(`course-progress-${course.id}`);
+      if (savedProgress) {
+        try {
+          const parsed = JSON.parse(savedProgress);
+          setCompletedLessons(new Set(parsed.completedLessons));
+          setCourseProgress(parsed.progress);
+        } catch (e) {
+          console.error('Error parsing saved progress', e);
         }
       }
-      setIsLoading(false);
-    }, 500);
-  }, [id]);
+    }
+  }, [course]);
+  
+  // Calculate progress whenever completedLessons changes
+  useEffect(() => {
+    if (course && course.modules) {
+      // Count total lessons
+      let totalLessons = 0;
+      course.modules.forEach(module => {
+        totalLessons += module.lessons?.length || 0;
+      });
+      
+      if (totalLessons > 0) {
+        const progress = Math.round((completedLessons.size / totalLessons) * 100);
+        setCourseProgress(progress);
+        
+        // Save progress to localStorage
+        if (course.id) {
+          localStorage.setItem(`course-progress-${course.id}`, JSON.stringify({
+            completedLessons: Array.from(completedLessons),
+            progress
+          }));
+        }
+      }
+    }
+  }, [completedLessons, course]);
+  
+  // Simulate progress tracking
+  useEffect(() => {
+    if (course && totalLessons > 0) {
+      // Get or initialize progress data
+      const progressKey = `course-progress-${course.id}`;
+      let progressData = localStorage.getItem(progressKey);
+      
+      if (progressData) {
+        try {
+          const parsedData = JSON.parse(progressData);
+          setLessonsCompleted(parsedData.completedLessons?.length || 0);
+          setProgress(Math.round((parsedData.completedLessons?.length / totalLessons) * 100));
+        } catch (e) {
+          console.error('Error parsing progress data:', e);
+          setLessonsCompleted(0);
+          setProgress(0);
+        }
+      } else {
+        // Initialize with no progress
+        setLessonsCompleted(0);
+        setProgress(0);
+      }
+    }
+  }, [course, totalLessons]);
+  
+  // Mark lesson as complete
+  const markLessonAsComplete = (lessonId: string) => {
+    if (!lessonId) return;
+    
+    const newCompletedLessons = new Set(completedLessons);
+    
+    if (newCompletedLessons.has(lessonId)) {
+      newCompletedLessons.delete(lessonId);
+    } else {
+      newCompletedLessons.add(lessonId);
+    }
+    
+    setCompletedLessons(newCompletedLessons);
+  };
+  
+  const isLessonCompleted = (lessonId: string): boolean => {
+    if (!course) return false;
+    
+    const progressKey = `course-progress-${course.id}`;
+    let progressData = localStorage.getItem(progressKey);
+    
+    if (progressData) {
+      try {
+        const parsedData = JSON.parse(progressData);
+        return parsedData.completedLessons?.includes(lessonId) || false;
+      } catch (e) {
+        console.error('Error parsing progress data:', e);
+        return false;
+      }
+    }
+    
+    return false;
+  };
+  
+  const handleLessonSelect = (lesson: Lesson) => {
+    setCurrentLesson(lesson);
+    // Find the module of this lesson and expand it
+    if (!course) return;
+    
+    for (const module of course.modules) {
+      if (module.lessons.some(l => l.id === lesson.id)) {
+        const newExpandedModules = new Set(expandedModules);
+        newExpandedModules.add(module.id);
+        setExpandedModules(newExpandedModules);
+        break;
+      }
+    }
+    
+    // Scroll to top for mobile users
+    if (videoRef.current) {
+      videoRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+  
+  const toggleModule = (moduleId: string) => {
+    const newExpandedModules = new Set(expandedModules);
+    if (newExpandedModules.has(moduleId)) {
+      newExpandedModules.delete(moduleId);
+    } else {
+      newExpandedModules.add(moduleId);
+    }
+    setExpandedModules(newExpandedModules);
+  };
+  
+  // Format YouTube URL for embedding
+  const formatYoutubeUrl = (url: string): string => {
+    if (!url) return '';
+    
+    // Check if it's already an embed URL
+    if (url.includes('youtube.com/embed/')) {
+      return url;
+    }
+    
+    // Handle youtube.com/watch?v= URLs
+    if (url.includes('youtube.com/watch?v=')) {
+      return url.replace('watch?v=', 'embed/').split('&')[0];
+    }
+    
+    // Handle youtu.be/ shortened URLs
+    if (url.includes('youtu.be/')) {
+      const videoId = url.split('youtu.be/')[1].split('?')[0];
+      return `https://www.youtube.com/embed/${videoId}`;
+    }
+    
+    // If it's just a video ID
+    if (url.match(/^[a-zA-Z0-9_-]{11}$/)) {
+      return `https://www.youtube.com/embed/${url}`;
+    }
+    
+    return url;
+  };
   
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
       </div>
     );
   }
@@ -55,7 +312,7 @@ const CourseDetailPage: React.FC = () => {
               The course you're looking for doesn't exist or has been removed.
             </p>
             <button 
-              className="btn btn-primary"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded"
               onClick={() => navigate('/courses')}
             >
               Browse all courses
@@ -66,341 +323,179 @@ const CourseDetailPage: React.FC = () => {
     );
   }
   
-  // Calculate total lessons and duration
-  const totalLessons = course.modules.reduce((sum, module) => sum + module.lessons.length, 0);
-  
-  const totalDuration = course.modules.reduce((sum, module) => {
-    return sum + module.lessons.reduce((lessonSum, lesson) => {
-      const [minutes, seconds] = lesson.duration.split(':').map(Number);
-      return lessonSum + minutes + (seconds / 60);
-    }, 0);
-  }, 0);
-  
-  const formattedDuration = `${Math.floor(totalDuration)}h ${Math.round((totalDuration % 1) * 60)}m`;
-  
-  const toggleModule = (moduleId: string) => {
-    const newExpandedModules = new Set(expandedModules);
-    if (newExpandedModules.has(moduleId)) {
-      newExpandedModules.delete(moduleId);
-    } else {
-      newExpandedModules.add(moduleId);
-    }
-    setExpandedModules(newExpandedModules);
-  };
-  
-  const handleLessonSelect = (lesson: Lesson) => {
-    setCurrentLesson(lesson);
-    // Find the module of this lesson and expand it
-    for (const module of course.modules) {
-      if (module.lessons.some(l => l.id === lesson.id)) {
-        const newExpandedModules = new Set(expandedModules);
-        newExpandedModules.add(module.id);
-        setExpandedModules(newExpandedModules);
-        break;
-      }
-    }
-    // Scroll to top for mobile users
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-  
-  // Find the next lesson after the current one
-  const findNextLesson = (): Lesson | null => {
-    if (!currentLesson || !course) return null;
-    
-    // Loop through all modules and their lessons
-    for (const module of course.modules) {
-      // Get the index of the current lesson in this module
-      const lessonIndex = module.lessons.findIndex(lesson => lesson.id === currentLesson.id);
-      
-      if (lessonIndex !== -1) {
-        // Check if there's a next lesson in this module
-        if (lessonIndex < module.lessons.length - 1) {
-          return module.lessons[lessonIndex + 1];
-        }
-        
-        // This was the last lesson in the current module, look for the next module
-        const moduleIndex = course.modules.findIndex(m => m.id === module.id);
-        if (moduleIndex < course.modules.length - 1) {
-          // There's a next module, return its first lesson
-          const nextModule = course.modules[moduleIndex + 1];
-          if (nextModule.lessons.length > 0) {
-            return nextModule.lessons[0];
-          }
-        }
-        
-        // This was the last lesson in the last module
-        return null;
-      }
-    }
-    
-    return null;
-  };
-  
-  // Handle navigation to the next lesson
-  const handleNextLesson = () => {
-    const nextLesson = findNextLesson();
-    if (nextLesson) {
-      handleLessonSelect(nextLesson);
-    }
-  };
-  
-  // Generate a flat list of all lessons for progress tracking
-  const getAllLessons = () => {
-    if (!course) return [];
-    
-    const allLessons: Array<{id: string, moduleId: string}> = [];
-    
-    course.modules.forEach(module => {
-      module.lessons.forEach(lesson => {
-        allLessons.push({
-          id: lesson.id,
-          moduleId: module.id
-        });
-      });
-    });
-    
-    return allLessons;
-  };
+  const formattedDuration = course.duration || "0h 0m";
   
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Course video and info section */}
+      {/* No duplicated navbar - using the global Navbar component instead */}
+      
+      {/* Breadcrumb */}
       <div className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2">
-              {currentLesson ? (
-                <>
-                  <VideoPlayer 
-                    videoUrl={currentLesson.videoUrl} 
-                    title={currentLesson.title}
-                    courseId={course.id}
-                    lessonId={currentLesson.id}
-                    totalLessons={totalLessons}
-                    onNextLesson={handleNextLesson}
-                    availableLessons={getAllLessons()}
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+          <div className="flex items-center text-sm">
+            <Link to="/" className="text-gray-500 hover:text-gray-700">Home</Link>
+            <span className="mx-2 text-gray-400">/</span>
+            <Link to="/courses" className="text-gray-500 hover:text-gray-700">Courses</Link>
+            <span className="mx-2 text-gray-400">/</span>
+            <span className="text-gray-900">{course.title}</span>
+          </div>
+        </div>
+      </div>
+      
+      {/* Course header */}
+      <div className="bg-blue-600 text-white py-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <h1 className="text-2xl font-bold">{course.title}</h1>
+            <div className="flex items-center">
+              <span className="flex items-center"><Star className="h-5 w-5 text-yellow-400 mr-1" fill="currentColor" /> {course.rating}</span>
+              <span className="mx-2">•</span>
+              <span>{course.totalStudents || 0} students</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main content area */}
+          <div className="lg:col-span-2">
+            {/* Video player */}
+            <div ref={videoRef} className="relative rounded-lg overflow-hidden shadow-lg max-w-3xl mx-auto">
+              {(currentLesson?.videoUrl || course?.videoUrl) ? (
+                <div className="aspect-w-16 aspect-h-9 w-full h-[400px]">
+                  <iframe
+                    src={formatYoutubeUrl(currentLesson?.videoUrl || course?.videoUrl || '')}
+                    title={currentLesson?.title || course?.title || ''}
+                    frameBorder="0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                    className="w-full h-full"
+                    style={{ maxWidth: '100%' }}
                   />
-                  <div className="mt-6">
-                    <h2 className="text-2xl font-bold text-gray-900 mb-2">{currentLesson.title}</h2>
-                    <p className="text-gray-600 mb-4">{currentLesson.description}</p>
-                    <div className="flex items-center text-sm text-gray-500">
-                      <Clock className="h-4 w-4 mr-1" />
-                      <span>{currentLesson.duration}</span>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <div className="aspect-video w-full rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
-                  <div className="text-center p-6">
-                    <BookOpen className="h-12 w-12 mx-auto text-gray-400 mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">No lesson selected</h3>
-                    <p className="text-gray-600">Select a lesson from the course content to start learning.</p>
-                  </div>
                 </div>
+              ) : (
+                <VideoPlaceholder 
+                  title="No video available for this lesson" 
+                  progress={courseProgress}
+                />
               )}
             </div>
             
-            <div className="lg:col-span-1">
-              <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="p-6 border-b border-gray-200">
-                  <h1 className="text-xl font-bold text-gray-900 mb-2">{course.title}</h1>
-                  <div className="flex items-center mb-4">
-                    <div className="flex items-center">
-                      <Star className="h-4 w-4 text-yellow-400" />
-                      <span className="ml-1 text-sm font-medium text-gray-700">{course.rating.toFixed(1)}</span>
-                    </div>
-                    <span className="mx-2 text-gray-300">•</span>
-                    <div className="flex items-center">
-                      <Users className="h-4 w-4 text-gray-400" />
-                      <span className="ml-1 text-sm text-gray-600">{course.totalStudents.toLocaleString()} students</span>
-                    </div>
+            {/* Progress tracking below video */}
+            <div className="mt-4 mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <div className="text-sm text-gray-700 font-medium">Your Progress</div>
+                <div className="text-sm text-gray-500">
+                  {completedLessons.size} of {totalLessons} lessons
+                </div>
+              </div>
+              
+              <div className="flex items-center space-x-3">
+                <div className="flex-shrink-0">
+                  <input 
+                    type="radio" 
+                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded-full"
+                    checked={completedLessons.has(currentLesson?.id || '')}
+                    onChange={() => currentLesson && markLessonAsComplete(currentLesson.id)}
+                  />
+                </div>
+                <div className="text-sm font-medium text-gray-600">
+                  {courseProgress}% complete
+                </div>
+                <div className="flex-grow"></div>
+                <button 
+                  onClick={() => currentLesson && markLessonAsComplete(currentLesson.id)}
+                  className="bg-gray-200 hover:bg-gray-300 px-4 py-1.5 rounded text-sm"
+                >
+                  Mark as complete
+                </button>
+              </div>
+            </div>
+            
+            {/* Current lesson title and description */}
+            <div className="mb-8">
+              <h2 className="text-xl font-bold mb-2">{currentLesson?.title || 'What is React?'}</h2>
+              <p className="text-gray-600">
+                {currentLesson?.description || 'Learn about React and its core concepts.'}
+              </p>
+              <div className="flex items-center mt-2 text-gray-500 text-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                {currentLesson?.duration || '15:20'}
+              </div>
+            </div>
+          </div>
+          
+          {/* Right sidebar - Course Content */}
+          <div className="lg:col-span-1 bg-white rounded-lg shadow-sm p-5 h-fit">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold">Course Content</h3>
+              <button 
+                onClick={() => setExpandedModules(new Set(course?.modules?.map(m => m.id) || []))}
+                className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+              >
+                Expand all
+              </button>
+            </div>
+            
+            {course?.modules?.map((module, moduleIndex) => (
+              <div key={module.id || moduleIndex} className="mb-3 border-b border-gray-100 pb-2 last:border-0">
+                <div 
+                  className="flex items-center justify-between py-2 cursor-pointer"
+                  onClick={() => toggleModule(module.id)}
+                >
+                  <div className="flex items-center">
+                    <svg 
+                      xmlns="http://www.w3.org/2000/svg" 
+                      className={`h-4 w-4 mr-2 transition-transform ${expandedModules.has(module.id) ? 'transform rotate-90' : ''}`} 
+                      fill="none" 
+                      viewBox="0 0 24 24" 
+                      stroke="currentColor"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <h4 className="font-medium">{module.title}</h4>
                   </div>
-                  <div className="flex flex-wrap gap-2 mb-4">
-                    <span className="badge badge-primary">{course.category}</span>
-                    <span className="badge bg-gray-100 text-gray-800">
-                      {course.level.charAt(0).toUpperCase() + course.level.slice(1)}
-                    </span>
-                  </div>
-                  <div className="flex items-center text-sm text-gray-600 mb-1">
-                    <BookOpen className="h-4 w-4 mr-2" />
-                    <span>{totalLessons} lessons</span>
-                  </div>
-                  <div className="flex items-center text-sm text-gray-600">
-                    <Clock className="h-4 w-4 mr-2" />
-                    <span>Total duration: {formattedDuration}</span>
-                  </div>
+                  <div className="text-sm text-gray-500">{module.lessons?.length || 0} lessons</div>
                 </div>
                 
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-medium text-gray-900">Course Content</h3>
-                    <button 
-                      className="text-primary-600 text-sm flex items-center hover:text-primary-700"
-                      onClick={() => {
-                        if (expandedModules.size === course.modules.length) {
-                          setExpandedModules(new Set());
-                        } else {
-                          setExpandedModules(new Set(course.modules.map(m => m.id)));
-                        }
-                      }}
-                    >
-                      {expandedModules.size === course.modules.length ? (
-                        <>
-                          <ChevronUp className="h-4 w-4 mr-1" />
-                          Collapse all
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown className="h-4 w-4 mr-1" />
-                          Expand all
-                        </>
-                      )}
-                    </button>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    {course.modules.map(module => (
-                      <div key={module.id} className="border border-gray-200 rounded-md overflow-hidden">
-                        <button
-                          className="w-full px-4 py-3 flex items-center justify-between bg-gray-50 hover:bg-gray-100 transition-colors"
-                          onClick={() => toggleModule(module.id)}
-                        >
-                          <div className="flex items-center">
-                            {expandedModules.has(module.id) ? (
-                              <ChevronDown className="h-5 w-5 text-gray-500 mr-2" />
-                            ) : (
-                              <ChevronRight className="h-5 w-5 text-gray-500 mr-2" />
-                            )}
-                            <span className="font-medium text-gray-900">{module.title}</span>
+                {expandedModules.has(module.id) && (
+                  <div className="pl-6 py-1">
+                    {module.lessons?.map((lesson, lessonIndex) => (
+                      <div 
+                        key={lesson.id || lessonIndex}
+                        className={`py-2 flex items-start cursor-pointer ${lesson.id === currentLesson?.id ? 'bg-blue-50 -mx-2 px-2 rounded' : ''}`}
+                        onClick={() => handleLessonSelect(lesson)}
+                      >
+                        <div className="flex-shrink-0 mr-3 mt-1">
+                          {completedLessons.has(lesson.id) ? (
+                            <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center">
+                              <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                              </svg>
+                            </div>
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="flex-grow">
+                          <div className="text-sm font-medium">{lesson.title}</div>
+                          <div className="text-xs text-gray-500 mt-0.5">
+                            {lesson.duration}
                           </div>
-                          <span className="text-sm text-gray-500">{module.lessons.length} lessons</span>
-                        </button>
-                        
-                        {expandedModules.has(module.id) && (
-                          <div className="border-t border-gray-200">
-                            {module.lessons.map(lesson => (
-                              <button
-                                key={lesson.id}
-                                className={`w-full px-4 py-3 flex items-start hover:bg-gray-50 transition-colors ${
-                                  currentLesson?.id === lesson.id ? 'bg-primary-50' : ''
-                                }`}
-                                onClick={() => handleLessonSelect(lesson)}
-                              >
-                                <div className={`flex-shrink-0 mt-0.5 ${
-                                  currentLesson?.id === lesson.id ? 'text-primary-600' : 'text-gray-400'
-                                }`}>
-                                  {currentLesson?.id === lesson.id ? (
-                                    <Play className="h-5 w-5" />
-                                  ) : (
-                                    <Play className="h-5 w-5" />
-                                  )}
-                                </div>
-                                <div className="ml-3 text-left flex-1">
-                                  <div className={`font-medium ${
-                                    currentLesson?.id === lesson.id ? 'text-primary-700' : 'text-gray-900'
-                                  }`}>
-                                    {lesson.title}
-                                  </div>
-                                  <div className="flex items-center mt-1 text-sm text-gray-500">
-                                    <Clock className="h-3 w-3 mr-1" />
-                                    <span>{lesson.duration}</span>
-                                  </div>
-                                </div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                        </div>
                       </div>
                     ))}
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      {/* Course description */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h2 className="text-xl font-bold text-gray-900 mb-4">About this course</h2>
-          <p className="text-gray-700 mb-6">{course.description}</p>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-3">What you'll learn</h3>
-              <ul className="space-y-2">
-                <li className="flex">
-                  <CheckCircle className="h-5 w-5 text-primary-600 mr-3 flex-shrink-0" />
-                  <span>Master the fundamentals of {course.category}</span>
-                </li>
-                <li className="flex">
-                  <CheckCircle className="h-5 w-5 text-primary-600 mr-3 flex-shrink-0" />
-                  <span>Build real-world projects with expert guidance</span>
-                </li>
-                <li className="flex">
-                  <CheckCircle className="h-5 w-5 text-primary-600 mr-3 flex-shrink-0" />
-                  <span>Understand advanced concepts and best practices</span>
-                </li>
-                <li className="flex">
-                  <CheckCircle className="h-5 w-5 text-primary-600 mr-3 flex-shrink-0" />
-                  <span>Prepare for professional work in the industry</span>
-                </li>
-              </ul>
-            </div>
-            
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-3">Course instructor</h3>
-              <div className="flex items-start">
-                <div className="flex-shrink-0">
-                  <div className="h-12 w-12 rounded-full bg-gray-200 flex items-center justify-center text-gray-500">
-                    {course.instructor.charAt(0)}
-                  </div>
-                </div>
-                <div className="ml-4">
-                  <h4 className="font-medium text-gray-900">{course.instructor}</h4>
-                  <p className="text-sm text-gray-600 mt-1">Expert in {course.category}</p>
-                  <button className="text-primary-600 text-sm mt-2 hover:text-primary-700">
-                    View profile
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      {/* Related courses */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
-        <h2 className="text-2xl font-bold text-gray-900 mb-6">Similar Courses</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {courses
-            .filter(c => c.category === course.category && c.id !== course.id)
-            .slice(0, 3)
-            .map(relatedCourse => (
-              <div 
-                key={relatedCourse.id}
-                className="card cursor-pointer"
-                onClick={() => navigate(`/courses/${relatedCourse.id}`)}
-              >
-                <img 
-                  src={relatedCourse.thumbnail} 
-                  alt={relatedCourse.title} 
-                  className="h-48 w-full object-cover"
-                />
-                <div className="p-4">
-                  <h3 className="text-lg font-semibold mb-2">{relatedCourse.title}</h3>
-                  <p className="text-sm text-gray-600 mb-3">{relatedCourse.instructor}</p>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <Star className="h-4 w-4 text-yellow-400" />
-                      <span className="ml-1 text-sm font-medium">{relatedCourse.rating.toFixed(1)}</span>
-                    </div>
-                    <span className="badge badge-primary">{relatedCourse.level}</span>
-                  </div>
-                </div>
+                )}
               </div>
             ))}
+          </div>
         </div>
       </div>
     </div>

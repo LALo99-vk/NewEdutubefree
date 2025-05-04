@@ -14,13 +14,17 @@ export interface Course {
   instructor: string;
   thumbnail: string;
   category: string;
-  level: 'beginner' | 'intermediate' | 'advanced';
+  level: string;
   rating: number;
   totalStudents: number;
-  featured?: boolean;
+  modules: Module[];
   createdAt: string;
   updatedAt: string;
-  modules: Module[];
+  videoUrl?: string;
+  duration?: string;
+  lessonsCount?: number;
+  studentsCount?: number;
+  featured?: boolean;
 }
 
 export interface Module {

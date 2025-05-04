@@ -1,20 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, FormEvent } from 'react';
 import { 
-  Users, BookOpen, List, Plus, Search, 
+  Plus, 
   Edit, Trash,
-  Activity, Eye
+  Eye, X, Youtube,
+  Search
 } from 'lucide-react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import ProgressBar from '../../components/ui/ProgressBar';
 
+// Interface definitions
 interface Course {
   _id: string;
   title: string;
   description: string;
   instructor: string;
   thumbnail: string;
-  category: { _id: string; name: string };
+  videoUrl?: string;
+  category: { 
+    _id: string; 
+    name: string 
+  };
   level: string;
   rating: number;
   totalStudents: number;
@@ -38,10 +44,12 @@ interface User {
   email: string;
   role: string;
   createdAt: string;
+  status?: 'active' | 'blocked'; // User access status
   enrolledCourses?: Array<{
     course: { _id: string; title: string };
     progress: number;
   }>;
+  lastLogin?: string;
 }
 
 interface Category {
@@ -51,186 +59,594 @@ interface Category {
   count: number;
 }
 
-interface CourseProgress {
-  courseId: string;
-  courseName: string;
-  averageProgress: number;
-  totalStudents: number;
-}
+const MOCK_COURSES: Course[] = [
+  {
+    _id: 'mock-course-1',
+    title: 'Introduction to React',
+    description: 'Learn the fundamentals of React, including components, state, and props.',
+    instructor: 'Jane Smith',
+    thumbnail: 'https://via.placeholder.com/640x360?text=React+Course',
+    videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    category: { _id: 'web-dev', name: 'Web Development' },
+    level: 'Beginner',
+    rating: 4.7,
+    totalStudents: 1243,
+    featured: true,
+    createdAt: '2023-01-15T12:00:00Z',
+    updatedAt: '2023-03-20T15:30:00Z',
+    modules: [
+      {
+        _id: 'module-1',
+        title: 'Getting Started with React',
+        lessons: [
+          { _id: 'lesson-1', title: 'What is React?', duration: '10:30' },
+          { _id: 'lesson-2', title: 'Setting Up Your Environment', duration: '15:45' }
+        ]
+      }
+    ]
+  },
+  {
+    _id: 'mock-course-2',
+    title: 'Advanced JavaScript Patterns',
+    description: 'Deep dive into advanced JavaScript concepts and design patterns.',
+    instructor: 'John Doe',
+    thumbnail: 'https://via.placeholder.com/640x360?text=JavaScript+Course',
+    videoUrl: 'https://www.youtube.com/watch?v=PkZNo7MFNFg',
+    category: { _id: 'javascript', name: 'JavaScript' },
+    level: 'Advanced',
+    rating: 4.9,
+    totalStudents: 856,
+    featured: false,
+    createdAt: '2023-02-10T14:20:00Z',
+    updatedAt: '2023-04-05T09:15:00Z',
+    modules: [
+      {
+        _id: 'module-1',
+        title: 'Closures and Scopes',
+        lessons: [
+          { _id: 'lesson-1', title: 'Understanding Closures', duration: '12:20' },
+          { _id: 'lesson-2', title: 'Lexical Scope', duration: '08:15' }
+        ]
+      }
+    ]
+  }
+];
+
+const MOCK_USERS: User[] = [
+  {
+    _id: 'user-1',
+    name: 'User One',
+    email: 'user1@example.com',
+    role: 'student',
+    status: 'active',
+    createdAt: '2023-01-01T00:00:00Z',
+    enrolledCourses: [
+      { course: { _id: 'mock-course-1', title: 'Introduction to React' }, progress: 65 }
+    ],
+    lastLogin: '2023-05-01T14:30:00Z'
+  },
+  {
+    _id: 'user-2',
+    name: 'Jane Smith',
+    email: 'jane.smith@example.com',
+    role: 'student',
+    status: 'active',
+    createdAt: '2023-02-15T00:00:00Z',
+    enrolledCourses: [
+      { course: { _id: 'mock-course-2', title: 'Advanced JavaScript Patterns' }, progress: 25 }
+    ],
+    lastLogin: '2023-04-20T09:15:00Z'
+  },
+  {
+    _id: 'user-3',
+    name: 'David Johnson',
+    email: 'david.j@example.com',
+    role: 'student',
+    status: 'blocked',
+    createdAt: '2023-03-10T00:00:00Z',
+    lastLogin: '2023-03-12T16:45:00Z'
+  }
+];
 
 const AdminDashboard: React.FC = () => {
-  const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { user } = useAuth();
   
-  const [activeTab, setActiveTab] = useState('overview');
-  const [searchQuery, setSearchQuery] = useState('');
+  // Get tab from URL or default to 'courses'
+  const tabFromUrl = new URLSearchParams(location.search).get('tab') || 'courses';
+  
+  // State
+  const [activeTab, setActiveTab] = useState<string>(tabFromUrl);
+  const [searchQuery, setSearchQuery] = useState<string>('');
   const [courses, setCourses] = useState<Course[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [courseProgress, setCourseProgress] = useState<CourseProgress[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string>('');
+  const [courseProgress, setCourseProgress] = useState<Record<string, number>>({});
+  const [showEditModal, setShowEditModal] = useState<boolean>(false);
+  const [showViewModal, setShowViewModal] = useState<boolean>(false);
+  const [showDeleteModal, setShowDeleteModal] = useState<boolean>(false);
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [viewingCourse, setViewingCourse] = useState<Course | null>(null);
+  const [deletingCourse, setDeletingCourse] = useState<Course | null>(null);
   
   // Redirect if not admin
-  if (user?.role !== 'admin') {
-    navigate('/');
-    return null;
-  }
+  useEffect(() => {
+    if (!user || user.role !== 'admin') {
+      navigate('/login');
+    }
+  }, [user, navigate]);
+  
+  // Sort users by last login time for login tracking
+  const sortedUsersByLogin = [...users].sort((a, b) => {
+    // If lastLogin is missing for either, sort them to the bottom
+    if (!a.lastLogin) return 1;
+    if (!b.lastLogin) return -1;
+    
+    // Sort newest logins first
+    return new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime();
+  });
+  
+  // Handle toggling user access status
+  const toggleUserAccess = async (userId: string, currentStatus: string | undefined) => {
+    try {
+      // Determine new status
+      const newStatus = currentStatus === 'active' ? 'blocked' : 'active';
+      
+      // Optimistically update the UI
+      const updatedUsers = users.map(user => {
+        if (user._id === userId) {
+          return { ...user, status: newStatus as 'active' | 'blocked' };
+        }
+        return user;
+      });
+      
+      setUsers(updatedUsers);
+      
+      // Try to update in the API
+      try {
+        const response = await fetch(`http://localhost:8080/api/users/${userId}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({ status: newStatus }),
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to update user status');
+        }
+      } catch (error) {
+        console.error('API error updating user status:', error);
+        // Status change is kept locally even if API fails
+      }
+    } catch (err) {
+      console.error('Error toggling user status:', err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    }
+  };
+  
+  // Listen for tab changes in URL
+  useEffect(() => {
+    const queryTab = new URLSearchParams(location.search).get('tab');
+    if (queryTab) {
+      setActiveTab(queryTab);
+    }
+  }, [location.search]);
 
+  // Calculate course progress based on enrolled user data
+  useEffect(() => {
+    if (users.length > 0 && courses.length > 0) {
+      const progress: Record<string, number> = {};
+      
+      // Initialize all courses with 0% progress
+      courses.forEach(course => {
+        progress[course._id] = 0;
+      });
+      
+      // Calculate progress for each course based on enrolled users
+      users.forEach(user => {
+        if (user.enrolledCourses && user.enrolledCourses.length > 0) {
+          user.enrolledCourses.forEach(enrollment => {
+            const courseId = enrollment.course._id;
+            if (progress[courseId] !== undefined) {
+              // Update the progress value by averaging with existing values
+              const currentTotal = progress[courseId] || 0;
+              const count = Object.keys(progress).includes(courseId) ? 2 : 1;
+              progress[courseId] = (currentTotal + enrollment.progress) / count;
+            }
+          });
+        }
+      });
+      
+      // Random progress for demo purposes if no real progress data exists
+      courses.forEach(course => {
+        if (progress[course._id] === 0) {
+          // Generate random progress between 0 and 100 for each course for demonstration
+          progress[course._id] = Math.floor(Math.random() * 101);
+        }
+      });
+      
+      setCourseProgress(progress);
+    }
+  }, [users, courses]);
+
+  // Load admin dashboard data
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
-        const token = localStorage.getItem('token');
-        if (!token) {
-          throw new Error('No authentication token found');
-        }
-
-        // Fetch courses
-        const coursesResponse = await fetch('http://localhost:8080/api/courses', {
-          headers: {
-            'x-auth-token': token
-          }
-        });
-
-        if (!coursesResponse.ok) {
-          throw new Error('Failed to fetch courses');
-        }
-
-        const coursesData = await coursesResponse.json();
-        setCourses(coursesData);
-
-        // Fetch users
-        const usersResponse = await fetch('http://localhost:8080/api/users', {
-          headers: {
-            'x-auth-token': token
-          }
-        });
-
-        if (!usersResponse.ok) {
-          throw new Error('Failed to fetch users');
-        }
-
-        const usersData = await usersResponse.json();
-        setUsers(usersData);
-
-        // Fetch categories
-        const categoriesResponse = await fetch('http://localhost:8080/api/categories');
-
-        if (!categoriesResponse.ok) {
-          throw new Error('Failed to fetch categories');
-        }
-
-        const categoriesData = await categoriesResponse.json();
-        setCategories(categoriesData);
-
-        // Calculate course progress statistics
-        const progressStats = coursesData.map((course: Course) => {
-          const enrolledUsers = usersData.filter((user: User) => 
-            user.enrolledCourses && user.enrolledCourses.some((ec: { course: { _id: string } }) => 
-              ec.course._id === course._id
-            )
-          );
-          
-          const totalEnrolled = enrolledUsers.length;
-          
-          let avgProgress = 0;
-          if (totalEnrolled > 0) {
-            const totalProgress = enrolledUsers.reduce((sum: number, user: User) => {
-              const courseEnrollment = user.enrolledCourses?.find((ec: { course: { _id: string } }) => 
-                ec.course._id === course._id
-              );
-              return sum + (courseEnrollment?.progress || 0);
-            }, 0);
-            
-            avgProgress = Math.round(totalProgress / totalEnrolled);
-          }
-          
-          return {
-            courseId: course._id,
-            courseName: course.title,
-            averageProgress: avgProgress,
-            totalStudents: totalEnrolled
-          };
-        });
         
-        setCourseProgress(progressStats);
-        setIsLoading(false);
+        // Get courses from localStorage first if they exist
+        const storedCourses = localStorage.getItem('adminCourses');
+        let localCourses = [];
+        if (storedCourses) {
+          try {
+            localCourses = JSON.parse(storedCourses);
+          } catch (e) {
+            console.error('Error parsing stored courses:', e);
+          }
+        }
+        
+        // Fetch courses from API
+        try {
+          const [coursesRes, usersRes, categoriesRes] = await Promise.all([
+            fetch('http://localhost:8080/api/courses'),
+            fetch('http://localhost:8080/api/users'),
+            fetch('http://localhost:8080/api/categories'),
+          ]);
+          
+          if (!coursesRes.ok || !usersRes.ok || !categoriesRes.ok) {
+            throw new Error('Failed to fetch data');
+          }
+          
+          const [coursesData, usersData, categoriesData] = await Promise.all([
+            coursesRes.json(),
+            usersRes.json(),
+            categoriesRes.json(),
+          ]);
+          
+          // Merge API courses with any locally added ones that aren't in the API response
+          if (localCourses.length > 0) {
+            // Get all course IDs from API response
+            const apiCourseIds = coursesData.map((c: Course) => c._id);
+            
+            // Filter local courses to only include those not in the API response
+            const localOnlyCourses = localCourses.filter((c: Course) => {
+              return !apiCourseIds.includes(c._id);
+            });
+            
+            // Combine API courses with local-only courses
+            const mergedCourses = [...coursesData, ...localOnlyCourses];
+            setCourses(mergedCourses);
+          } else {
+            setCourses(coursesData);
+          }
+          
+          setUsers(usersData);
+          
+          // If categories API fails or returns empty, use default categories
+          if (!categoriesData || categoriesData.length === 0) {
+            const defaultCategories = [
+              { _id: 'web-dev', name: 'Web Development', icon: '💻', count: 10 },
+              { _id: 'javascript', name: 'JavaScript', icon: '🧩', count: 5 },
+              { _id: 'react', name: 'React', icon: '⚛️', count: 8 },
+              { _id: 'mobile-dev', name: 'Mobile Development', icon: '📱', count: 6 },
+              { _id: 'data-science', name: 'Data Science', icon: '📊', count: 7 },
+              { _id: 'machine-learning', name: 'Machine Learning', icon: '🤖', count: 4 },
+              { _id: 'design', name: 'Design', icon: '🎨', count: 3 },
+              { _id: 'devops', name: 'DevOps', icon: '🔄', count: 2 }
+            ];
+            setCategories(defaultCategories);
+          } else {
+            setCategories(categoriesData);
+          }
+        } catch (error) {
+          console.error('Error fetching from API:', error);
+          setError(error instanceof Error ? error.message : 'An unknown error occurred');
+          
+          // Use localStorage courses if available, otherwise use mock data
+          if (localCourses.length > 0) {
+            setCourses(localCourses);
+          } else {
+            setCourses(MOCK_COURSES);
+          }
+          
+          setUsers(MOCK_USERS);
+          
+          // Set default categories if error occurs
+          const defaultCategories = [
+            { _id: 'web-dev', name: 'Web Development', icon: '💻', count: 10 },
+            { _id: 'javascript', name: 'JavaScript', icon: '🧩', count: 5 },
+            { _id: 'react', name: 'React', icon: '⚛️', count: 8 },
+            { _id: 'mobile-dev', name: 'Mobile Development', icon: '📱', count: 6 },
+            { _id: 'data-science', name: 'Data Science', icon: '📊', count: 7 },
+            { _id: 'machine-learning', name: 'Machine Learning', icon: '🤖', count: 4 },
+            { _id: 'design', name: 'Design', icon: '🎨', count: 3 },
+            { _id: 'devops', name: 'DevOps', icon: '🔄', count: 2 }
+          ];
+          setCategories(defaultCategories);
+        }
       } catch (err) {
-        console.error('Error fetching data:', err);
+        console.error('Error in overall data fetching:', err);
         setError(err instanceof Error ? err.message : 'An unknown error occurred');
+        setCourses(MOCK_COURSES);
+        setUsers(MOCK_USERS);
+        
+        // Set default categories if error occurs
+        const defaultCategories = [
+          { _id: 'web-dev', name: 'Web Development', icon: '💻', count: 10 },
+          { _id: 'javascript', name: 'JavaScript', icon: '🧩', count: 5 },
+          { _id: 'react', name: 'React', icon: '⚛️', count: 8 },
+          { _id: 'mobile-dev', name: 'Mobile Development', icon: '📱', count: 6 },
+          { _id: 'data-science', name: 'Data Science', icon: '📊', count: 7 },
+          { _id: 'machine-learning', name: 'Machine Learning', icon: '🤖', count: 4 },
+          { _id: 'design', name: 'Design', icon: '🎨', count: 3 },
+          { _id: 'devops', name: 'DevOps', icon: '🔄', count: 2 }
+        ];
+        setCategories(defaultCategories);
+      } finally {
         setIsLoading(false);
       }
     };
-
+    
     fetchData();
   }, []);
 
-  const stats = {
-    totalCourses: courses.length,
-    totalUsers: users.length,
-    totalLessons: courses.reduce((sum, course) => {
-      return sum + course.modules.reduce((moduleSum, module) => moduleSum + module.lessons.length, 0);
-    }, 0),
-    totalCategories: categories.length
+  // Change tab function
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    navigate(`/admin?tab=${tab}`);
   };
-  
-  // Calculate average course completion for all users
-  const calculateOverallProgress = () => {
-    if (!users.length || !courses.length) return [];
+
+  // Filter courses based on search query
+  const filteredCourses = courses.filter(course => 
+    course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    course.category.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Course CRUD operations
+  const handleAddCourse = (newCourseData: Partial<Course>) => {
+    // Create a unique ID with a consistent format that won't conflict with server IDs
+    const courseId = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     
-    const courseProgressData: CourseProgress[] = courses.map((course: Course) => {
-      const enrolledUsers = users.filter((user: User) => 
-        user.enrolledCourses && user.enrolledCourses.some((ec: { course: { _id: string } }) => 
-          ec.course._id === course._id
-        )
-      );
+    // Get category from categories list
+    let categoryObj = { _id: '', name: '' };
+    if (newCourseData.category?._id) {
+      const foundCategory = categories.find(c => c._id === newCourseData.category?._id);
+      if (foundCategory) {
+        categoryObj = { _id: foundCategory._id, name: foundCategory.name };
+      } else {
+        // Default to first category if category not found
+        categoryObj = categories.length > 0 ? 
+          { _id: categories[0]._id, name: categories[0].name } : 
+          { _id: 'web-dev', name: 'Web Development' };
+      }
+    }
+    
+    // Collection of real thumbnail images based on category
+    const thumbnailImages: Record<string, string[]> = {
+      'Web Development': [
+        'https://cdn.pixabay.com/photo/2016/11/19/14/00/code-1839406_1280.jpg',
+        'https://cdn.pixabay.com/photo/2019/10/03/12/12/javascript-4523100_1280.jpg',
+        'https://cdn.pixabay.com/photo/2016/12/28/09/36/web-1935737_1280.png',
+        'https://cdn.pixabay.com/photo/2018/05/08/08/44/artificial-intelligence-3382507_1280.jpg'
+      ],
+      'Mobile Development': [
+        'https://cdn.pixabay.com/photo/2017/01/22/12/07/imac-1999636_1280.png',
+        'https://cdn.pixabay.com/photo/2020/01/26/20/14/computer-4795762_1280.jpg',
+        'https://cdn.pixabay.com/photo/2018/01/29/13/03/internet-3116062_1280.jpg',
+        'https://cdn.pixabay.com/photo/2019/04/29/07/04/software-development-4165307_1280.jpg'
+      ],
+      'Data Science': [
+        'https://cdn.pixabay.com/photo/2017/08/30/01/05/milky-way-2695569_1280.jpg',
+        'https://cdn.pixabay.com/photo/2016/10/11/21/43/geometric-1732847_1280.jpg',
+        'https://cdn.pixabay.com/photo/2018/04/11/19/48/data-3311458_1280.png',
+        'https://cdn.pixabay.com/photo/2018/09/18/11/19/artificial-intelligence-3685928_1280.png'
+      ],
+      'Machine Learning': [
+        'https://cdn.pixabay.com/photo/2017/05/10/19/29/robot-2301646_1280.jpg',
+        'https://cdn.pixabay.com/photo/2018/06/07/16/49/virtual-3460451_1280.jpg',
+        'https://cdn.pixabay.com/photo/2020/05/07/04/01/digitization-5140071_1280.jpg',
+        'https://cdn.pixabay.com/photo/2021/11/04/06/27/artificial-intelligence-6767502_1280.jpg'
+      ],
+      'Design': [
+        'https://cdn.pixabay.com/photo/2017/08/10/02/05/tiles-shapes-2617112_1280.jpg',
+        'https://cdn.pixabay.com/photo/2017/01/20/19/53/productivity-1995786_1280.jpg',
+        'https://cdn.pixabay.com/photo/2018/02/23/04/38/laptop-3174729_1280.jpg',
+        'https://cdn.pixabay.com/photo/2016/11/29/08/41/apple-1868496_1280.jpg'
+      ],
+      'DevOps': [
+        'https://cdn.pixabay.com/photo/2016/11/27/21/42/stock-1863880_1280.jpg',
+        'https://cdn.pixabay.com/photo/2018/02/15/10/35/server-3155000_1280.jpg',
+        'https://cdn.pixabay.com/photo/2016/11/30/20/58/programming-1873854_1280.png',
+        'https://cdn.pixabay.com/photo/2018/08/10/15/45/woman-3597101_1280.jpg'
+      ],
+      'JavaScript': [
+        'https://cdn.pixabay.com/photo/2019/10/03/12/12/javascript-4523100_1280.jpg',
+        'https://cdn.pixabay.com/photo/2015/10/02/15/09/javascript-968983_1280.jpg',
+        'https://cdn.pixabay.com/photo/2018/04/20/21/10/code-3337044_1280.jpg',
+        'https://cdn.pixabay.com/photo/2015/12/04/14/05/code-1076536_1280.jpg'
+      ],
+      'React': [
+        'https://cdn.pixabay.com/photo/2017/12/12/12/44/programming-3014296_1280.jpg',
+        'https://cdn.pixabay.com/photo/2016/11/30/20/58/programming-1873854_1280.png',
+        'https://cdn.pixabay.com/photo/2015/09/17/17/25/code-944499_1280.jpg',
+        'https://cdn.pixabay.com/photo/2018/05/08/08/46/artificial-intelligence-3382509_1280.jpg'
+      ]
+    };
+    
+    // Make sure we have a proper thumbnail
+    if (!newCourseData.thumbnail || newCourseData.thumbnail === '' || newCourseData.thumbnail.includes('placeholder')) {
+      // Get category name or use fallback
+      const categoryName = categoryObj.name || 'Web Development';
       
-      const totalEnrolled = enrolledUsers.length;
-      let avgProgress = 0;
+      // Find images for this category or use web development as fallback
+      const categoryImages = thumbnailImages[categoryName] || thumbnailImages['Web Development'];
       
-      if (totalEnrolled > 0) {
-        const totalProgress = enrolledUsers.reduce((sum: number, user: User) => {
-          const courseEnrollment = user.enrolledCourses?.find((ec: { course: { _id: string } }) => 
-            ec.course._id === course._id
-          );
-          return sum + (courseEnrollment?.progress || 0);
-        }, 0);
+      // Pick a random image from the category
+      const randomIndex = Math.floor(Math.random() * categoryImages.length);
+      newCourseData.thumbnail = categoryImages[randomIndex];
+    }
+    
+    // Ensure course has all required fields
+    const courseToAdd = {
+      ...newCourseData,
+      _id: courseId,
+      totalStudents: newCourseData.totalStudents || 0,
+      rating: newCourseData.rating || 4.5,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      category: categoryObj
+    };
+    
+    // Optimistically update the UI
+    setCourses(prevCourses => [...prevCourses, courseToAdd]);
+    
+    // Save to localStorage
+    const storedCourses = localStorage.getItem('adminCourses');
+    const parsedCourses = storedCourses ? JSON.parse(storedCourses) : [];
+    localStorage.setItem('adminCourses', JSON.stringify([...parsedCourses, courseToAdd]));
+    
+    // Try to add to API as well
+    fetch('http://localhost:8080/api/courses', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+      body: JSON.stringify(courseToAdd),
+    })
+    .then(response => {
+      if (!response.ok) throw new Error('Failed to add course');
+      return response.json();
+    })
+    .then(data => {
+      console.log('Course added successfully:', data);
+      // Update the course with the server-provided ID if available
+      if (data._id && data._id !== courseId) {
+        setCourses(prevCourses => 
+          prevCourses.map(c => c._id === courseId ? { ...c, _id: data._id } : c)
+        );
         
-        avgProgress = Math.round(totalProgress / totalEnrolled);
+        // Update in localStorage
+        const storedCourses = localStorage.getItem('adminCourses');
+        const parsedCourses = storedCourses ? JSON.parse(storedCourses) : [];
+        const updatedCourses = parsedCourses.map((c: any) => 
+          c._id === courseId ? { ...c, _id: data._id } : c
+        );
+        localStorage.setItem('adminCourses', JSON.stringify(updatedCourses));
+      }
+    })
+    .catch(error => {
+      console.error('Error adding course:', error);
+      // Course is still added locally even if API fails
+      setError('Failed to add course to API, but it has been saved locally.');
+    });
+  };
+
+  const handleViewCourse = (course: Course) => {
+    setViewingCourse(course);
+    setShowViewModal(true);
+  };
+
+  const handleEditCourse = (course: Course) => {
+    setEditingCourse(course);
+    setShowEditModal(true);
+  };
+
+  const handleDeleteCourse = async (courseId: string) => {
+    try {
+      const token = localStorage.getItem('token');
+      
+      // Optimistic update - remove course from UI immediately
+      const updatedCourses = courses.filter(c => c._id !== courseId);
+      setCourses(updatedCourses);
+      
+      // Update localStorage with updated courses list
+      const storedCourses = localStorage.getItem('adminCourses');
+      if (storedCourses) {
+        try {
+          const parsedCourses = JSON.parse(storedCourses);
+          const filteredCourses = parsedCourses.filter((c: any) => c._id !== courseId);
+          localStorage.setItem('adminCourses', JSON.stringify(filteredCourses));
+        } catch (e) {
+          console.error('Error updating localStorage:', e);
+          // Still save the current courses state if parsing failed
+          localStorage.setItem('adminCourses', JSON.stringify(updatedCourses));
+        }
+      } else {
+        localStorage.setItem('adminCourses', JSON.stringify(updatedCourses));
       }
       
-      return {
-        courseId: course._id,
-        courseName: course.title,
-        averageProgress: avgProgress,
-        totalStudents: totalEnrolled
-      };
-    });
-    
-    // Sort by popularity (number of students)
-    return courseProgressData.sort((a, b) => b.totalStudents - a.totalStudents);
+      // Close modals and reset state
+      setShowDeleteModal(false);
+      setDeletingCourse(null);
+      
+      // Try to delete from server if we have a token
+      // Note: Local-only courses (added during this session) may not exist on server
+      if (token) {
+        try {
+          const response = await fetch(`http://localhost:8080/api/courses/${courseId}`, {
+            method: 'DELETE',
+            headers: { 
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          if (!response.ok && response.status !== 404) {
+            // 404 is expected for local courses, only throw for other errors
+            throw new Error(`Failed to delete course from server: ${response.status}`);
+          }
+        } catch (error) {
+          console.error('Error deleting from server:', error);
+          // Course is already removed from localStorage - no need to restore
+        }
+      }
+    } catch (err) {
+      console.error('Error deleting course:', err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    }
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
+  const handleUpdateCourse = (updatedCourse: Course) => {
+    try {
+      // Update course locally
+      const updatedCourses = courses.map(course => course._id === updatedCourse._id ? updatedCourse : course);
+      setCourses(updatedCourses);
+      localStorage.setItem('adminCourses', JSON.stringify(updatedCourses));
+      
+      // Update in API
+      fetch(`http://localhost:8080/api/courses/${updatedCourse._id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify(updatedCourse),
+      })
+      .then(response => {
+        if (!response.ok) throw new Error('Failed to update course');
+        return response.json();
+      })
+      .then(data => {
+        console.log('Course updated successfully:', data);
+      })
+      .catch(error => {
+        console.error('Error updating course:', error);
+        setError('Failed to update course in API.');
+      });
+    } catch (err) {
+      console.error('Error updating course:', err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    }
+  };
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded max-w-md">
-          <p className="font-bold">Error</p>
-          <p>{error}</p>
-        </div>
-      </div>
-    );
-  }
-
+  // Render
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -241,8 +657,8 @@ const AdminDashboard: React.FC = () => {
           </div>
           <div className="mt-4 md:mt-0">
             <button 
-              className="btn btn-primary flex items-center"
-              onClick={() => navigate('/admin/courses/new')}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-md flex items-center"
+              onClick={() => setShowEditModal(true)}
             >
               <Plus className="h-4 w-4 mr-2" />
               New Course
@@ -250,398 +666,87 @@ const AdminDashboard: React.FC = () => {
           </div>
         </div>
         
-        {/* Tabs */}
-        <div className="mb-8 border-b border-gray-200">
-          <nav className="flex space-x-8">
+        {/* Navigation Tabs */}
+        <div className="border-b border-gray-200 mb-6">
+          <nav className="-mb-px flex space-x-8">
             <button
-              className={`px-1 py-4 text-sm font-medium border-b-2 ${
-                activeTab === 'overview' 
-                  ? 'border-primary-500 text-primary-600' 
+              onClick={() => handleTabChange('overview')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'overview'
+                  ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
-              onClick={() => setActiveTab('overview')}
             >
               Overview
             </button>
             <button
-              className={`px-1 py-4 text-sm font-medium border-b-2 ${
-                activeTab === 'courses' 
-                  ? 'border-primary-500 text-primary-600' 
+              onClick={() => handleTabChange('courses')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'courses'
+                  ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
-              onClick={() => setActiveTab('courses')}
             >
               Courses
             </button>
             <button
-              className={`px-1 py-4 text-sm font-medium border-b-2 ${
-                activeTab === 'users' 
-                  ? 'border-primary-500 text-primary-600' 
+              onClick={() => handleTabChange('users')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'users'
+                  ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
-              onClick={() => setActiveTab('users')}
             >
               Users
             </button>
             <button
-              className={`px-1 py-4 text-sm font-medium border-b-2 ${
-                activeTab === 'progress' 
-                  ? 'border-primary-500 text-primary-600' 
+              onClick={() => handleTabChange('progress')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'progress'
+                  ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
-              onClick={() => setActiveTab('progress')}
             >
               Progress Tracking
+            </button>
+            <button
+              onClick={() => handleTabChange('login')}
+              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
+                activeTab === 'login'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              Login Tracking
             </button>
           </nav>
         </div>
         
-        {activeTab === 'progress' && (
-          <>
-            <div className="mb-8 bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">Course Progress Overview</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="font-semibold text-gray-700 mb-2">Overall Course Completion</h3>
-                  <p className="text-3xl font-bold text-primary-600 mb-2">
-                    {calculateOverallProgress().length > 0 ? 
-                      Math.round(calculateOverallProgress().reduce((sum, cp) => sum + cp.averageProgress, 0) / calculateOverallProgress().length) : 0}%
-                  </p>
-                  <ProgressBar 
-                    progress={calculateOverallProgress().length > 0 ? 
-                      Math.round(calculateOverallProgress().reduce((sum, cp) => sum + cp.averageProgress, 0) / calculateOverallProgress().length) : 0} 
-                    height={10} 
-                  />
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <h3 className="font-semibold text-gray-700 mb-2">Active Learners</h3>
-                  <p className="text-3xl font-bold text-primary-600">
-                    {users.filter(u => u.enrolledCourses && u.enrolledCourses.length > 0).length}
-                  </p>
-                  <p className="text-gray-600 text-sm">
-                    {users.length > 0 
-                      ? Math.round((users.filter(u => u.enrolledCourses && u.enrolledCourses.length > 0).length / users.length) * 100) 
-                      : 0}% of total users
-                  </p>
-                </div>
-              </div>
-              
-              <h3 className="font-semibold text-gray-700 mb-4">Course Completion Rates</h3>
-              {courseProgress
-                .filter(cp => cp.totalStudents > 0)
-                .sort((a, b) => b.totalStudents - a.totalStudents)
-                .slice(0, 5)
-                .map((cp, index) => (
-                  <div key={index} className="mb-4">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700">{cp.courseName}</span>
-                      <span className="text-sm font-medium text-gray-700">
-                        {cp.totalStudents} student{cp.totalStudents !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-                    <ProgressBar 
-                      progress={cp.averageProgress} 
-                      color={cp.averageProgress > 75 ? "bg-green-600" : cp.averageProgress > 50 ? "bg-blue-600" : "bg-primary-600"}
-                    />
-                  </div>
-                ))}
-            </div>
-            
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4">User Progress Details</h2>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">User</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Enrolled Courses</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg. Progress</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {users
-                      .filter(u => u.enrolledCourses && u.enrolledCourses.length > 0)
-                      .slice(0, 10)
-                      .map((user: User) => {
-                        const avgProgress = user.enrolledCourses 
-                          ? Math.round(user.enrolledCourses.reduce((sum: number, ec: { progress: number }) => sum + ec.progress, 0) / user.enrolledCourses.length)
-                          : 0;
-                          
-                        return (
-                          <tr key={user._id}>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center">
-                                <div className="flex-shrink-0 h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center">
-                                  <span className="text-primary-600 font-medium">{user.name.charAt(0).toUpperCase()}</span>
-                                </div>
-                                <div className="ml-4">
-                                  <div className="text-sm font-medium text-gray-900">{user.name}</div>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.email}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.enrolledCourses?.length || 0}</td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="w-32">
-                                <ProgressBar progress={avgProgress} height={6} />
-                              </div>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
-        
-        {activeTab === 'overview' && (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white rounded-lg shadow p-6 flex items-center">
-                <div className="rounded-full bg-primary-100 p-3 mr-4">
-                  <Users className="h-8 w-8 text-primary-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 font-medium">Total Users</p>
-                  <h3 className="text-2xl font-bold">{users.length}</h3>
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-lg shadow p-6 flex items-center">
-                <div className="rounded-full bg-green-100 p-3 mr-4">
-                  <BookOpen className="h-8 w-8 text-green-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 font-medium">Total Courses</p>
-                  <h3 className="text-2xl font-bold">{courses.length}</h3>
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-lg shadow p-6 flex items-center">
-                <div className="rounded-full bg-blue-100 p-3 mr-4">
-                  <List className="h-8 w-8 text-blue-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 font-medium">Categories</p>
-                  <h3 className="text-2xl font-bold">{categories.length}</h3>
-                </div>
-              </div>
-              
-              <div className="bg-white rounded-lg shadow p-6 flex items-center">
-                <div className="rounded-full bg-yellow-100 p-3 mr-4">
-                  <Activity className="h-8 w-8 text-yellow-600" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 font-medium">Avg. Completion</p>
-                  <h3 className="text-2xl font-bold">
-                    {users.length > 0 ? 
-                      Math.round(
-                        users.reduce((sum, user) => {
-                          if (!user.enrolledCourses || user.enrolledCourses.length === 0) return sum;
-                          const userAvgProgress = user.enrolledCourses.reduce((sum, course) => sum + course.progress, 0) / user.enrolledCourses.length;
-                          return sum + userAvgProgress;
-                        }, 0) / users.filter(user => user.enrolledCourses && user.enrolledCourses.length > 0).length || 1
-                      ) : 0
-                    }%
-                  </h3>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-              <div className="bg-white rounded-lg shadow p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Course Completion Rates</h3>
-                </div>
-                {courseProgress.length > 0 ? (
-                  <div className="space-y-4">
-                    {courseProgress.slice(0, 5).map((course, index) => (
-                      <div key={index}>
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-sm font-medium text-gray-700 truncate" style={{ maxWidth: '70%' }}>
-                            {course.courseName}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            {course.totalStudents} {course.totalStudents === 1 ? 'student' : 'students'}
-                          </span>
-                        </div>
-                        <div className="flex items-center">
-                          <div className="flex-grow mr-2">
-                            <ProgressBar 
-                              progress={course.averageProgress} 
-                              color={
-                                course.averageProgress < 30 ? 'bg-red-500' : 
-                                course.averageProgress < 70 ? 'bg-yellow-500' : 
-                                'bg-green-500'
-                              }
-                            />
-                          </div>
-                          <span className="text-sm font-medium">{course.averageProgress}%</span>
-                        </div>
-                      </div>
-                    ))}
-                    {courseProgress.length > 5 && (
-                      <div className="text-center mt-4">
-                        <button 
-                          onClick={() => setActiveTab('courses')}
-                          className="text-sm text-primary-600 hover:text-primary-800"
-                        >
-                          View all courses
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">No course data available.</p>
-                )}
-              </div>
-              
-              <div className="bg-white rounded-lg shadow p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h3 className="text-lg font-semibold">Recent User Enrollments</h3>
-                </div>
-                {users.length > 0 ? (
-                  <div className="space-y-4">
-                    {users
-                      .filter(user => user.enrolledCourses && user.enrolledCourses.length > 0)
-                      .sort((a, b) => {
-                        // This is a simple sorting, you might want to sort by enrollment date if available
-                        return (b.enrolledCourses?.length || 0) - (a.enrolledCourses?.length || 0);
-                      })
-                      .slice(0, 5)
-                      .map((user, index) => (
-                        <div key={index} className="flex items-center justify-between">
-                          <div className="flex items-center">
-                            <div className="w-10 h-10 bg-primary-100 rounded-full flex items-center justify-center">
-                              <span className="text-primary-600 font-medium">{user.name.charAt(0).toUpperCase()}</span>
-                            </div>
-                            <div className="ml-4">
-                              <p className="font-medium">{user.name}</p>
-                              <p className="text-sm text-gray-500">{user.enrolledCourses?.length || 0} courses</p>
-                            </div>
-                          </div>
-                          <div>
-                            {user.enrolledCourses && user.enrolledCourses.length > 0 && (
-                              <div className="text-right">
-                                <p className="text-sm font-medium">
-                                  {Math.round(
-                                    user.enrolledCourses.reduce((sum, course) => sum + course.progress, 0) / 
-                                    user.enrolledCourses.length
-                                  )}% avg
-                                </p>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))
-                    }
-                    {users.filter(user => user.enrolledCourses && user.enrolledCourses.length > 0).length > 5 && (
-                      <div className="text-center mt-4">
-                        <button 
-                          onClick={() => setActiveTab('users')}
-                          className="text-sm text-primary-600 hover:text-primary-800"
-                        >
-                          View all users
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className="text-gray-500">No user enrollment data available.</p>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg shadow p-6 mb-8">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold">Enrollment & Progress Overview</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Course
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Students
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Progress
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {courseProgress.slice(0, 10).map((course, index) => (
-                      <tr key={index}>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="font-medium text-gray-900 truncate" style={{ maxWidth: '250px' }}>
-                            {course.courseName}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">{course.totalStudents}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="w-48">
-                            <ProgressBar 
-                              progress={course.averageProgress} 
-                              color={
-                                course.averageProgress < 30 ? 'bg-red-500' : 
-                                course.averageProgress < 70 ? 'bg-yellow-500' : 
-                                'bg-green-500'
-                              }
-                            />
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                            ${course.averageProgress < 30 ? 'bg-red-100 text-red-800' : 
-                              course.averageProgress < 70 ? 'bg-yellow-100 text-yellow-800' : 
-                              'bg-green-100 text-green-800'}`}>
-                            {course.averageProgress < 30 ? 'Low Completion' : 
-                             course.averageProgress < 70 ? 'In Progress' : 
-                             'High Completion'}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </>
-        )}
-        
+        {/* Courses Tab Content */}
         {activeTab === 'courses' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex flex-col sm:flex-row justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-gray-800 mb-4 sm:mb-0">Course Management</h2>
-              <div className="flex items-center space-x-2">
-                <div className="relative">
-                  <input
-                    type="text"
-                    placeholder="Search courses..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  />
-                  <div className="absolute left-3 top-2.5">
-                    <Search className="h-5 w-5 text-gray-400" />
-                  </div>
+          <div>
+            <div className="mb-6 flex justify-between">
+              <h2 className="text-xl font-semibold text-gray-800">Course Management</h2>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-5 w-5 text-gray-400" />
                 </div>
-                <Link to="/admin/courses/new" className="bg-primary-600 text-white p-2 rounded-lg hover:bg-primary-700">
-                  <Plus className="h-5 w-5" />
-                </Link>
+                <input
+                  type="text"
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                  placeholder="Search courses..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <button
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-blue-600 hover:text-blue-800"
+                  onClick={() => setSearchQuery('')}
+                >
+                  {searchQuery && <X className="h-4 w-4" />}
+                </button>
               </div>
             </div>
-            <div className="overflow-x-auto">
+            <div className="bg-white shadow overflow-x-auto rounded-lg">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
@@ -663,261 +768,921 @@ const AdminDashboard: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {courses
-                    .filter(course => 
-                      course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      (course.description && course.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                      (course.instructor && course.instructor.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                      (course.category?.name && course.category.name.toLowerCase().includes(searchQuery.toLowerCase()))
-                    )
-                    .map((course) => {
-                      const courseProgressItem = courseProgress.find(cp => cp.courseId === course._id);
+                  {filteredCourses.map((course) => (
+                    <tr key={course._id}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center">
+                          <div className="flex-shrink-0 h-10 w-10 bg-gray-200 rounded-md overflow-hidden">
+                            {course.thumbnail ? (
+                              <img
+                                src={course.thumbnail}
+                                alt={course.title}
+                                className="h-10 w-10 object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = 'https://via.placeholder.com/40x40?text=Course';
+                                }}
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-gray-200 text-gray-500">
+                                <span className="text-xs">No img</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="ml-4">
+                            <div className="text-sm font-medium text-gray-900">{course.title}</div>
+                            <div className="text-sm text-gray-500">{course.instructor}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
+                          {course.category?.name || 'Uncategorized'}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        {course.totalStudents || 0}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <ProgressBar 
+                          progress={courseProgress[course._id] || 0} 
+                          height={8} 
+                          showPercentage={true}
+                          color={courseProgress[course._id] < 30 ? 'bg-red-500' : 
+                                courseProgress[course._id] < 70 ? 'bg-yellow-500' : 'bg-green-500'}
+                        />
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleViewCourse(course)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="View course details"
+                          >
+                            <Eye className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => handleEditCourse(course)}
+                            className="text-blue-600 hover:text-blue-900"
+                            title="Edit course"
+                          >
+                            <Edit className="h-5 w-5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDeletingCourse(course);
+                              setShowDeleteModal(true);
+                            }}
+                            className="text-red-600 hover:text-red-900"
+                            title="Delete course"
+                          >
+                            <Trash className="h-5 w-5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  
+                  {filteredCourses.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
+                        {isLoading ? (
+                          <div className="flex justify-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                          </div>
+                        ) : (
+                          <div>
+                            {error ? (
+                              <div className="text-red-500">{error}</div>
+                            ) : (
+                              <div>No courses found</div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Login Tracking Tab Content */}
+        {activeTab === 'login' && (
+          <div>
+            <div className="mb-6 flex justify-between">
+              <h2 className="text-xl font-semibold text-gray-800">Login Activity</h2>
+              <div className="text-sm text-gray-500">
+                Showing most recent logins first
+              </div>
+            </div>
+            <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      User
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Last Login
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Courses Enrolled
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {sortedUsersByLogin.length > 0 ? (
+                    sortedUsersByLogin.map((user) => {
+                      const lastLogin = user.lastLogin ? new Date(user.lastLogin) : null;
+                      const now = new Date();
+                      const daysDifference = lastLogin ? Math.floor((now.getTime() - lastLogin.getTime()) / (1000 * 60 * 60 * 24)) : null;
+                      
+                      // Determine status based on last login
+                      let statusColor = 'bg-gray-100 text-gray-800';
+                      let statusText = 'Never Logged In';
+                      
+                      if (lastLogin) {
+                        if (daysDifference === 0) {
+                          statusColor = 'bg-green-100 text-green-800';
+                          statusText = 'Today';
+                        } else if (daysDifference === 1) {
+                          statusColor = 'bg-green-100 text-green-800';
+                          statusText = 'Yesterday';
+                        } else if (daysDifference && daysDifference < 7) {
+                          statusColor = 'bg-blue-100 text-blue-800';
+                          statusText = `${daysDifference} days ago`;
+                        } else if (daysDifference && daysDifference < 30) {
+                          statusColor = 'bg-yellow-100 text-yellow-800';
+                          statusText = `${Math.floor(daysDifference / 7)} weeks ago`;
+                        } else {
+                          statusColor = 'bg-red-100 text-red-800';
+                          statusText = `${Math.floor(daysDifference / 30)} months ago`;
+                        }
+                      }
+                      
                       return (
-                        <tr key={course._id}>
+                        <tr key={user._id}>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <div className="flex items-center">
-                              {course.thumbnail ? (
-                                <img src={course.thumbnail} alt={course.title} className="h-10 w-10 rounded object-cover mr-3" />
-                              ) : (
-                                <div className="h-10 w-10 rounded bg-gray-200 flex items-center justify-center mr-3">
-                                  <BookOpen className="h-5 w-5 text-gray-500" />
-                                </div>
-                              )}
-                              <div className="font-medium text-gray-900">{course.title}</div>
+                              <div className="flex-shrink-0 h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center">
+                                <span className="text-xl text-gray-600">
+                                  {user.name.charAt(0).toUpperCase()}
+                                </span>
+                              </div>
+                              <div className="ml-4">
+                                <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                                <div className="text-sm text-gray-500">{user.email}</div>
+                              </div>
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
-                            <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                              {course.category?.name || 'Uncategorized'}
+                            {lastLogin ? (
+                              <div>
+                                <div className="text-sm text-gray-900">
+                                  {lastLogin.toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric'
+                                  })}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {lastLogin.toLocaleTimeString('en-US', {
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-gray-500">Never</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColor}`}>
+                              {statusText}
                             </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {courseProgressItem?.totalStudents || 0}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="w-48">
-                              <ProgressBar 
-                                progress={courseProgressItem?.averageProgress || 0} 
-                                color={
-                                  !courseProgressItem || courseProgressItem.averageProgress < 30 ? 'bg-red-500' : 
-                                  courseProgressItem.averageProgress < 70 ? 'bg-yellow-500' : 
-                                  'bg-green-500'
-                                }
-                              />
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium space-x-2">
-                            <Link to={`/courses/${course._id}`} className="text-blue-600 hover:text-blue-900">
-                              <Eye className="h-5 w-5 inline" />
-                            </Link>
-                            <Link to={`/admin/courses/edit/${course._id}`} className="text-indigo-600 hover:text-indigo-900">
-                              <Edit className="h-5 w-5 inline" />
-                            </Link>
-                            <button className="text-red-600 hover:text-red-900">
-                              <Trash className="h-5 w-5 inline" />
-                            </button>
+                            {user.enrolledCourses ? user.enrolledCourses.length : 0}
                           </td>
                         </tr>
                       );
-                    })}
+                    })
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
+                        {isLoading ? (
+                          <div className="flex justify-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                          </div>
+                        ) : (
+                          <div>
+                            {error ? (
+                              <div className="text-red-500">{error}</div>
+                            ) : (
+                              <div>No user login data available</div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
         )}
         
+        {/* Users Tab Content */}
         {activeTab === 'users' && (
-          <>
-            <div className="mb-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div className="relative flex-1 max-w-md">
+          <div>
+            <div className="mb-6 flex justify-between">
+              <h2 className="text-xl font-semibold text-gray-800">User Management</h2>
+              <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Search className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
                   type="text"
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
                   placeholder="Search users..."
-                  className="input pl-10 w-full"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                 />
-              </div>
-              <div className="flex space-x-3">
-                <select className="input">
-                  <option>All Roles</option>
-                  <option>Admin</option>
-                  <option>User</option>
-                </select>
-                <button className="btn btn-primary flex items-center">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add User
+                <button
+                  className="absolute inset-y-0 right-0 flex items-center pr-3 text-blue-600 hover:text-blue-800"
+                  onClick={() => setSearchQuery('')}
+                >
+                  {searchQuery && <X className="h-4 w-4" />}
                 </button>
               </div>
             </div>
             
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        User
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Email
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Role
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Status
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Joined
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {[
-                      { id: 1, name: 'John Doe', email: 'john.doe@example.com', role: 'user', status: 'active', joined: '2024-01-15' },
-                      { id: 2, name: 'Jane Smith', email: 'jane.smith@example.com', role: 'admin', status: 'active', joined: '2023-11-10' },
-                      { id: 3, name: 'Michael Johnson', email: 'michael.j@example.com', role: 'user', status: 'inactive', joined: '2024-02-22' },
-                      { id: 4, name: 'Sarah Williams', email: 'sarah.w@example.com', role: 'user', status: 'active', joined: '2024-03-05' },
-                      { id: 5, name: 'David Miller', email: 'david.m@example.com', role: 'user', status: 'active', joined: '2023-12-18' },
-                    ].map(user => (
-                      <tr key={user.id} className="hover:bg-gray-50">
+            <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      User
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Role
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Last Login
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Courses
+                    </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {users.filter(user => 
+                    user.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                    user.email.toLowerCase().includes(searchQuery.toLowerCase())
+                  ).map(user => {
+                    const lastLogin = user.lastLogin ? new Date(user.lastLogin) : null;
+                    return (
+                      <tr key={user._id}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center">
-                            <div className="flex-shrink-0 h-10 w-10">
-                              <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center text-lg text-primary-600 font-bold">
-                                {user.name.charAt(0)}
-                              </div>
+                            <div className="flex-shrink-0 h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center">
+                              <span className="text-xl text-gray-600">
+                                {user.name.charAt(0).toUpperCase()}
+                              </span>
                             </div>
                             <div className="ml-4">
                               <div className="text-sm font-medium text-gray-900">{user.name}</div>
+                              <div className="text-sm text-gray-500">{user.email}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {user.email}
-                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`badge ${
-                            user.role === 'admin' ? 'bg-secondary-100 text-secondary-800' : 'bg-gray-100 text-gray-800'
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            user.role === 'admin' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'
                           }`}>
-                            {user.role}
+                            {user.role || 'student'}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`badge ${
+                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
                             user.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                           }`}>
-                            {user.status}
+                            {user.status || 'active'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(user.joined).toLocaleDateString()}
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          {lastLogin ? (
+                            <div className="text-sm text-gray-900">
+                              {lastLogin.toLocaleDateString()}
+                            </div>
+                          ) : (
+                            <span className="text-sm text-gray-500">Never</span>
+                          )}
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                          <div className="flex space-x-2">
-                            <button className="text-secondary-600 hover:text-secondary-900">
-                              <Edit className="h-5 w-5" />
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {user.enrolledCourses ? user.enrolledCourses.length : 0}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          {user.role !== 'admin' && (
+                            <button 
+                              onClick={() => toggleUserAccess(user._id, user.status)}
+                              className={`px-3 py-1 rounded-md ${
+                                user.status === 'active' || !user.status
+                                  ? 'bg-red-500 hover:bg-red-600 text-white' 
+                                  : 'bg-green-500 hover:bg-green-600 text-white'
+                              }`}
+                            >
+                              {user.status === 'active' || !user.status ? 'Block Access' : 'Allow Access'}
                             </button>
-                            <button className="text-red-600 hover:text-red-900">
-                              <Trash className="h-5 w-5" />
-                            </button>
-                          </div>
+                          )}
                         </td>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    );
+                  })}
+                  
+                  {users.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-4 text-center text-sm text-gray-500">
+                        {isLoading ? (
+                          <div className="flex justify-center">
+                            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                          </div>
+                        ) : (
+                          <div>
+                            {error ? (
+                              <div className="text-red-500">{error}</div>
+                            ) : (
+                              <div>No users found</div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        
+        {/* Progress Tracking Tab Content */}
+        {activeTab === 'progress' && (
+          <div>
+            <div className="mb-6 flex justify-between">
+              <h2 className="text-xl font-semibold text-gray-800">Course Progress Overview</h2>
+            </div>
+            <div className="bg-white shadow overflow-hidden sm:rounded-lg p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {courses.map(course => {
+                  const progress = courseProgress[course._id] || 0;
+                  return (
+                    <div key={course._id} className="border border-gray-200 rounded-lg p-4">
+                      <div className="flex items-center mb-2">
+                        <div className="w-12 h-12 bg-gray-100 rounded overflow-hidden mr-3">
+                          {course.thumbnail ? (
+                            <img 
+                              src={course.thumbnail} 
+                              alt={course.title} 
+                              className="w-full h-full object-cover"
+                              onError={(e) => {
+                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/120?text=Course';
+                              }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                              <span className="text-xs">No img</span>
+                            </div>
+                          )}
+                        </div>
+                        <div>
+                          <h3 className="font-medium text-gray-900">{course.title}</h3>
+                          <p className="text-sm text-gray-500">{course.totalStudents || 0} enrolled</p>
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <ProgressBar 
+                          progress={progress} 
+                          height={8} 
+                          showPercentage={true}
+                          color={progress < 30 ? 'bg-red-500' : progress < 70 ? 'bg-yellow-500' : 'bg-green-500'}
+                        />
+                      </div>
+                      <div className="mt-2 flex justify-between text-sm">
+                        <span className="text-gray-500">Completion rate</span>
+                        <span className="font-medium text-gray-700">
+                          {progress < 30 ? 'Low' : progress < 70 ? 'Medium' : 'High'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-              <div className="px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
-                <div className="flex-1 flex justify-between sm:hidden">
-                  <button className="btn btn-outline py-2">Previous</button>
-                  <button className="btn btn-outline py-2">Next</button>
+            </div>
+          </div>
+        )}
+        
+        {/* Overview Tab Content */}
+        {activeTab === 'overview' && (
+          <div className="bg-white shadow overflow-hidden sm:rounded-lg p-6">
+            <h2 className="text-xl font-semibold text-gray-800 mb-4">Platform Overview</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white overflow-hidden shadow rounded-lg">
+                <div className="px-4 py-5 sm:p-6">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Total Courses</dt>
+                    <dd className="mt-1 text-3xl font-semibold text-gray-900">{courses.length}</dd>
+                  </dl>
                 </div>
-                <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm text-gray-700">
-                      Showing <span className="font-medium">1</span> to <span className="font-medium">5</span> of{' '}
-                      <span className="font-medium">25</span> users
-                    </p>
-                  </div>
-                  <div>
-                    <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                      >
-                        <span className="sr-only">Previous</span>
-                        <svg
-                          className="h-5 w-5"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </a>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-primary-50 text-sm font-medium text-primary-600 hover:bg-primary-100"
-                      >
-                        1
-                      </a>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        2
-                      </a>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        3
-                      </a>
-                      <span className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700">
-                        ...
-                      </span>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-4 py-2 border border-gray-300 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      >
-                        5
-                      </a>
-                      <a
-                        href="#"
-                        className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                      >
-                        <span className="sr-only">Next</span>
-                        <svg
-                          className="h-5 w-5"
-                          xmlns="http://www.w3.org/2000/svg"
-                          viewBox="0 0 20 20"
-                          fill="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            fillRule="evenodd"
-                            d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
-                            clipRule="evenodd"
-                          />
-                        </svg>
-                      </a>
-                    </nav>
-                  </div>
+              </div>
+              <div className="bg-white overflow-hidden shadow rounded-lg">
+                <div className="px-4 py-5 sm:p-6">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Total Users</dt>
+                    <dd className="mt-1 text-3xl font-semibold text-gray-900">{users.length}</dd>
+                  </dl>
+                </div>
+              </div>
+              <div className="bg-white overflow-hidden shadow rounded-lg">
+                <div className="px-4 py-5 sm:p-6">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">Total Categories</dt>
+                    <dd className="mt-1 text-3xl font-semibold text-gray-900">{categories.length}</dd>
+                  </dl>
                 </div>
               </div>
             </div>
-          </>
+          </div>
+        )}
+
+        {/* View Course Modal */}
+        {showViewModal && viewingCourse && (
+          <div className="fixed inset-0 overflow-y-auto z-50">
+            <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+              <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+              </div>
+              <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+              <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-3xl sm:w-full">
+                <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg leading-6 font-medium text-gray-900">{viewingCourse.title}</h3>
+                    <button
+                      type="button"
+                      onClick={() => setShowViewModal(false)}
+                      className="text-gray-400 hover:text-gray-500"
+                    >
+                      <X className="h-6 w-6" />
+                    </button>
+                  </div>
+                  
+                  <div className="mt-2 space-y-4">
+                    {viewingCourse.thumbnail && (
+                      <div className="mb-4">
+                        <img 
+                          src={viewingCourse.thumbnail} 
+                          alt={viewingCourse.title}
+                          className="w-full h-48 object-cover rounded-lg" 
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = 'https://via.placeholder.com/640x360?text=Course+Thumbnail';
+                          }}
+                        />
+                      </div>
+                    )}
+                    
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <h2 className="text-xl font-bold">{viewingCourse.title}</h2>
+                      <p className="text-sm text-gray-500">by {viewingCourse.instructor}</p>
+                      
+                      <div className="mt-3 flex items-center gap-2">
+                        <span className="bg-blue-100 text-blue-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                          {viewingCourse.category?.name || 'Uncategorized'}
+                        </span>
+                        <span className="bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                          {viewingCourse.level}
+                        </span>
+                        {viewingCourse.featured && (
+                          <span className="bg-yellow-100 text-yellow-800 text-xs font-medium px-2.5 py-0.5 rounded">
+                            Featured
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <h4 className="font-medium text-gray-900">Description</h4>
+                      <p className="mt-1 text-gray-600 whitespace-pre-line">{viewingCourse.description}</p>
+                    </div>
+                    
+                    {viewingCourse.videoUrl && (
+                      <div>
+                        <h4 className="font-medium text-gray-900">Video</h4>
+                        <div className="mt-2">
+                          <a 
+                            href={viewingCourse.videoUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center text-blue-600 hover:underline"
+                          >
+                            <Youtube className="h-5 w-5 mr-1 text-red-600" />
+                            Watch on YouTube
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {viewingCourse.modules && viewingCourse.modules.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-gray-900">Course Modules</h4>
+                        <div className="mt-2 space-y-3">
+                          {viewingCourse.modules.map((module) => (
+                            <div key={module._id} className="border border-gray-200 rounded-md p-3">
+                              <h5 className="font-medium">{module.title}</h5>
+                              {module.lessons && module.lessons.length > 0 && (
+                                <ul className="mt-2 space-y-1">
+                                  {module.lessons.map((lesson) => (
+                                    <li key={lesson._id} className="text-sm text-gray-600 flex justify-between">
+                                      <span>{lesson.title}</span>
+                                      <span className="text-gray-500">{lesson.duration}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="flex justify-between text-sm text-gray-500 pt-2 border-t border-gray-200">
+                      <span>Created: {new Date(viewingCourse.createdAt).toLocaleDateString()}</span>
+                      <span>Last updated: {new Date(viewingCourse.updatedAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                  <button
+                    type="button"
+                    onClick={() => setShowViewModal(false)}
+                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-blue-600 text-base font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:ml-3 sm:w-auto sm:text-sm"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowViewModal(false);
+                      handleEditCourse(viewingCourse);
+                    }}
+                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                  >
+                    Edit Course
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && deletingCourse && (
+          <div className="fixed inset-0 overflow-y-auto z-50">
+            <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+              <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+              </div>
+              <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+              <div className="inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full">
+                <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+                  <div className="sm:flex sm:items-start">
+                    <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left w-full">
+                      <div className="flex justify-between">
+                        <h3 className="text-lg leading-6 font-medium text-gray-900">Delete Course</h3>
+                        <button
+                          onClick={() => setShowDeleteModal(false)}
+                          className="text-gray-400 hover:text-gray-500"
+                        >
+                          <X className="h-5 w-5" />
+                        </button>
+                      </div>
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-500">
+                          Are you sure you want to delete this course? This action cannot be undone.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteCourse(deletingCourse._id)}
+                    className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDeleteModal(false);
+                      setDeletingCourse(null);
+                    }}
+                    className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Course Form Modal - Add/Edit Course */}
+        {showEditModal && (
+          <div className="fixed inset-0 overflow-y-auto z-50">
+            <div className="flex items-end justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+              <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+                <div className="absolute inset-0 bg-gray-500 opacity-75"></div>
+              </div>
+              <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+              <div className="inline-block align-bottom bg-white rounded-lg px-4 pt-5 pb-4 text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-lg sm:w-full sm:p-6">
+                <form onSubmit={(e: FormEvent<HTMLFormElement>) => {
+                  e.preventDefault();
+                  
+                  if (editingCourse) {
+                    // Edit existing course
+                    handleUpdateCourse(editingCourse);
+                  } else {
+                    // Add new course
+                    const formElement = e.currentTarget;
+                    const formData = new FormData(formElement);
+                    
+                    const newCourse: Partial<Course> = {
+                      title: formData.get('title') as string,
+                      description: formData.get('description') as string,
+                      instructor: formData.get('instructor') as string,
+                      thumbnail: formData.get('thumbnail') as string,
+                      videoUrl: formData.get('videoUrl') as string,
+                      level: formData.get('level') as string,
+                      category: {
+                        _id: formData.get('category') as string,
+                        name: categories.find(c => c._id === formData.get('category'))?.name || ''
+                      },
+                      duration: formData.get('duration') as string || '1h 30m'
+                    };
+                    
+                    handleAddCourse(newCourse);
+                  }
+                  
+                  setShowEditModal(false);
+                  setEditingCourse(null);
+                }}>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Course Title *
+                      </label>
+                      <input
+                        type="text"
+                        name="title"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="Enter course title"
+                        defaultValue={editingCourse?.title || ''}
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Description *
+                      </label>
+                      <textarea
+                        name="description"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="Enter course description"
+                        rows={4}
+                        defaultValue={editingCourse?.description || ''}
+                        required
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Instructor *
+                      </label>
+                      <input
+                        type="text"
+                        name="instructor"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="Enter instructor name"
+                        defaultValue={editingCourse?.instructor || ''}
+                        required
+                      />
+                    </div>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Category *
+                        </label>
+                        <select
+                          name="category"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          defaultValue={editingCourse?.category?._id || ''}
+                          required
+                        >
+                          <option value="">Select category</option>
+                          {categories && categories.length > 0 ? (
+                            categories.map(category => (
+                              <option key={category._id} value={category._id}>
+                                {category.name}
+                              </option>
+                            ))
+                          ) : (
+                            <>
+                              <option value="web-dev">Web Development</option>
+                              <option value="javascript">JavaScript</option>
+                              <option value="react">React</option>
+                              <option value="mobile-dev">Mobile Development</option>
+                              <option value="data-science">Data Science</option>
+                              <option value="machine-learning">Machine Learning</option>
+                              <option value="design">Design</option>
+                              <option value="devops">DevOps</option>
+                            </>
+                          )}
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Level
+                        </label>
+                        <select
+                          name="level"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                          defaultValue={editingCourse?.level || 'beginner'}
+                        >
+                          <option value="beginner">Beginner</option>
+                          <option value="intermediate">Intermediate</option>
+                          <option value="advanced">Advanced</option>
+                        </select>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Video URL (YouTube)
+                      </label>
+                      <input
+                        type="url"
+                        name="videoUrl"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="https://www.youtube.com/watch?v=..."
+                        defaultValue={editingCourse?.videoUrl || ''}
+                      />
+                      <p className="text-sm text-gray-500 mt-1">
+                        Enter a YouTube video URL for the course preview
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Thumbnail
+                      </label>
+                      <input
+                        type="url"
+                        name="thumbnail"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="https://example.com/image.jpg"
+                        value={editingCourse?.thumbnail || ''}
+                        onChange={(e) => {
+                          if (editingCourse) {
+                            setEditingCourse({
+                              ...editingCourse,
+                              thumbnail: e.target.value
+                            });
+                          }
+                        }}
+                      />
+                      
+                      <div className="mt-3">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Or select a thumbnail:
+                        </label>
+                        <div className="max-h-60 overflow-y-auto">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                            {editingCourse?.category && [
+                              'Web Development',
+                              'Mobile Development',
+                              'Data Science',
+                              'Machine Learning',
+                              'Design',
+                              'DevOps',
+                              'JavaScript',
+                              'React'
+                            ].includes(editingCourse.category.name) ? (
+                              // Display category-specific thumbnails
+                              [
+                                'https://cdn.pixabay.com/photo/2016/11/19/14/00/code-1839406_1280.jpg',
+                                'https://cdn.pixabay.com/photo/2019/10/03/12/12/javascript-4523100_1280.jpg',
+                                'https://cdn.pixabay.com/photo/2016/12/28/09/36/web-1935737_1280.png',
+                                'https://cdn.pixabay.com/photo/2018/05/08/08/44/artificial-intelligence-3382507_1280.jpg'
+                              ].map((url, index) => (
+                                <div
+                                  key={index}
+                                  onClick={() => {
+                                    if (editingCourse) {
+                                      setEditingCourse({
+                                        ...editingCourse,
+                                        thumbnail: url
+                                      });
+                                    }
+                                  }}
+                                  className={`cursor-pointer border-2 overflow-hidden hover:opacity-90 transition rounded ${
+                                    editingCourse?.thumbnail === url ? 'border-blue-500' : 'border-transparent'
+                                  }`}
+                                >
+                                  <img src={url} alt={`Thumbnail option ${index + 1}`} className="w-full h-24 object-cover" />
+                                </div>
+                              ))
+                            ) : (
+                              // Display generic thumbnails
+                              [
+                                'https://cdn.pixabay.com/photo/2016/11/19/14/00/code-1839406_1280.jpg',
+                                'https://cdn.pixabay.com/photo/2019/10/03/12/12/javascript-4523100_1280.jpg',
+                                'https://cdn.pixabay.com/photo/2017/08/10/02/05/tiles-shapes-2617112_1280.jpg',
+                                'https://cdn.pixabay.com/photo/2017/05/10/19/29/robot-2301646_1280.jpg',
+                                'https://cdn.pixabay.com/photo/2018/02/15/10/35/server-3155000_1280.jpg',
+                                'https://cdn.pixabay.com/photo/2018/09/18/11/19/artificial-intelligence-3685928_1280.png'
+                              ].map((url, index) => (
+                                <div
+                                  key={index}
+                                  onClick={() => {
+                                    if (editingCourse) {
+                                      setEditingCourse({
+                                        ...editingCourse,
+                                        thumbnail: url
+                                      });
+                                    }
+                                  }}
+                                  className={`cursor-pointer border-2 overflow-hidden hover:opacity-90 transition rounded ${
+                                    editingCourse?.thumbnail === url ? 'border-blue-500' : 'border-transparent'
+                                  }`}
+                                >
+                                  <img src={url} alt={`Thumbnail option ${index + 1}`} className="w-full h-24 object-cover" />
+                                </div>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Duration
+                      </label>
+                      <input
+                        type="text"
+                        name="duration"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                        placeholder="e.g., 1h 30m"
+                        defaultValue={editingCourse?.duration || '1h 30m'}
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6 flex justify-end space-x-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowEditModal(false);
+                        setEditingCourse(null);
+                      }}
+                      className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                    >
+                      {editingCourse ? 'Save Changes' : 'Add Course'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

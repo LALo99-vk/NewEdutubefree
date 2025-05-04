@@ -1,20 +1,74 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Filter, X } from 'lucide-react';
-import { courses, categories } from '../../data/mockData';
+import { courses as mockCourses, categories } from '../../data/mockData';
 import CourseCard from '../../components/ui/CourseCard';
 import { Course } from '../../types';
 
 const CoursesPage: React.FC = () => {
-  const [filteredCourses, setFilteredCourses] = useState<Course[]>(courses);
+  const [allCourses, setAllCourses] = useState<Course[]>([]);
+  const [filteredCourses, setFilteredCourses] = useState<Course[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('');
   const [selectedLevel, setSelectedLevel] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   
   const location = useLocation();
   const navigate = useNavigate();
   
+  // Load courses from localStorage or API
+  useEffect(() => {
+    const loadCourses = async () => {
+      setIsLoading(true);
+      try {
+        // Try to get courses from localStorage first (these are courses added in admin dashboard)
+        const storedCourses = localStorage.getItem('adminCourses');
+        let coursesData: Course[] = [];
+        
+        if (storedCourses) {
+          const parsedCourses = JSON.parse(storedCourses);
+          // Map admin courses to match the expected Course type format
+          coursesData = parsedCourses.map((course: any) => ({
+            id: course._id,
+            title: course.title,
+            description: course.description || '',
+            instructor: course.instructor || 'Unknown Instructor',
+            thumbnail: course.thumbnail || 'https://via.placeholder.com/640x360?text=No+Image',
+            category: course.category?.name || 'Uncategorized',
+            level: course.level || 'beginner',
+            rating: course.rating || 4.5,
+            duration: '3h 15m',
+            studentsCount: course.totalStudents || 0,
+            lessonsCount: 12,
+            videoUrl: course.videoUrl || null
+          }));
+        }
+        
+        // If no courses in localStorage or there's very few, also include mock courses
+        if (coursesData.length < 3) {
+          // Combine with mock courses, but avoid duplicates by id
+          const existingIds = new Set(coursesData.map(c => c.id));
+          const additionalMockCourses = mockCourses.filter(c => !existingIds.has(c.id));
+          coursesData = [...coursesData, ...additionalMockCourses];
+        }
+        
+        setAllCourses(coursesData);
+        setFilteredCourses(coursesData);
+      } catch (error) {
+        console.error('Error loading courses:', error);
+        // Fallback to mock data if there's an error
+        setAllCourses(mockCourses);
+        setFilteredCourses(mockCourses);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadCourses();
+  }, []);
+  
+  // Apply URL parameters for filtering
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const searchParam = params.get('search');
@@ -28,16 +82,18 @@ const CoursesPage: React.FC = () => {
       setSelectedCategory(categoryParam);
     }
     
-    applyFilters(searchParam || searchQuery, categoryParam || selectedCategory, selectedLevel);
-  }, [location.search]);
+    if (allCourses.length > 0) {
+      applyFilters(searchParam || searchQuery, categoryParam || selectedCategory, selectedLevel);
+    }
+  }, [location.search, allCourses]);
   
   const applyFilters = (search: string, category: string, level: string) => {
-    let result = [...courses];
+    let result = [...allCourses];
     
     if (search) {
       result = result.filter(course => 
         course.title.toLowerCase().includes(search.toLowerCase()) ||
-        course.description.toLowerCase().includes(search.toLowerCase())
+        (course.description && course.description.toLowerCase().includes(search.toLowerCase()))
       );
     }
     
@@ -75,7 +131,7 @@ const CoursesPage: React.FC = () => {
     setSearchQuery('');
     setSelectedCategory('');
     setSelectedLevel('');
-    setFilteredCourses(courses);
+    setFilteredCourses(allCourses);
     navigate('/courses');
   };
 
@@ -262,7 +318,13 @@ const CoursesPage: React.FC = () => {
           </h2>
         </div>
         
-        {filteredCourses.length > 0 ? (
+        {isLoading ? (
+          <div className="text-center">
+            <div className="spinner-border animate-spin inline-block w-8 h-8 border-4 rounded-full text-gray-600" role="status">
+              <span className="sr-only">Loading...</span>
+            </div>
+          </div>
+        ) : filteredCourses.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
             {filteredCourses.map(course => (
               <CourseCard key={course.id} course={course} />

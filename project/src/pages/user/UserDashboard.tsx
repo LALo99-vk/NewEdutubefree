@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import ProgressBar from '../../components/ui/ProgressBar';
 import { Link, useNavigate } from 'react-router-dom';
-import { Award, Clock, BookOpen, Calendar, RefreshCw } from 'lucide-react';
+import { Award, Clock, BookOpen, Calendar, RefreshCw, Youtube } from 'lucide-react';
 
 interface EnrolledCourse {
   _id: string;
@@ -11,6 +11,8 @@ interface EnrolledCourse {
     title: string;
     thumbnail: string;
     level: string;
+    videoUrl?: string;
+    description?: string;
   };
   progress: number;
   startDate: string;
@@ -120,7 +122,9 @@ const UserDashboard: React.FC = () => {
           _id: 'c1',
           title: 'Introduction to Web Development',
           thumbnail: 'https://picsum.photos/400/300',
-          level: 'Beginner'
+          level: 'Beginner',
+          videoUrl: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+          description: 'Learn the basics of web development with HTML, CSS, and JavaScript.'
         },
         progress: 75,
         startDate: new Date().toISOString(),
@@ -132,7 +136,9 @@ const UserDashboard: React.FC = () => {
           _id: 'c2',
           title: 'Advanced JavaScript',
           thumbnail: 'https://picsum.photos/400/301',
-          level: 'Advanced'
+          level: 'Advanced',
+          videoUrl: 'https://www.youtube.com/watch?v=W6NZfCO5SIk',
+          description: 'Master advanced JavaScript concepts and patterns.'
         },
         progress: 30,
         startDate: new Date().toISOString(),
@@ -144,7 +150,9 @@ const UserDashboard: React.FC = () => {
           _id: 'c3',
           title: 'React Fundamentals',
           thumbnail: 'https://picsum.photos/400/302',
-          level: 'Intermediate'
+          level: 'Intermediate',
+          videoUrl: 'https://www.youtube.com/watch?v=Ke90Tje7VS0',
+          description: 'Learn the fundamentals of React and component-based architecture.'
         },
         progress: 100,
         startDate: new Date().toISOString(),
@@ -352,6 +360,29 @@ const UserDashboard: React.FC = () => {
                   </span>
                 </div>
                 
+                {enrolledCourse.course.description && (
+                  <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+                    {enrolledCourse.course.description}
+                  </p>
+                )}
+                
+                {/* Video player for course preview */}
+                {enrolledCourse.course.videoUrl && (
+                  <div className="mb-4">
+                    <div className="relative aspect-w-16 aspect-h-9 rounded overflow-hidden">
+                      <iframe
+                        src={enrolledCourse.course.videoUrl.replace('watch?v=', 'embed/')}
+                        title={`${enrolledCourse.course.title} preview`}
+                        frameBorder="0"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                        className="absolute inset-0 w-full h-full"
+                        loading="lazy"
+                      ></iframe>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="mb-4">
                   <div className="flex justify-between items-center mb-1">
                     <span className={`text-sm font-medium ${
@@ -380,12 +411,24 @@ const UserDashboard: React.FC = () => {
                   />
                 </div>
                 
-                <Link 
-                  to={`/courses/${enrolledCourse.course._id}`}
-                  className="block w-full text-center bg-primary-50 text-primary-700 border border-primary-200 py-2 rounded hover:bg-primary-100 transition"
-                >
-                  Continue Learning
-                </Link>
+                <div className="flex space-x-2">
+                  <Link 
+                    to={`/courses/${enrolledCourse.course._id}`}
+                    className="flex-1 text-center bg-primary-600 text-white py-2 rounded hover:bg-primary-700 transition"
+                  >
+                    Continue Learning
+                  </Link>
+                  
+                  {enrolledCourse.course.videoUrl && (
+                    <button
+                      onClick={() => window.open(enrolledCourse.course.videoUrl, '_blank')}
+                      className="flex items-center justify-center px-3 py-2 bg-red-600 text-white rounded hover:bg-red-700 transition"
+                      title="Watch on YouTube"
+                    >
+                      <Youtube size={20} />
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Mail, Lock, UserPlus } from 'lucide-react';
+import { User, Mail, Lock, UserPlus, Users, Shield, Check, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 const Register: React.FC = () => {
@@ -8,34 +8,87 @@ const Register: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [role, setRole] = useState<'user' | 'admin'>('user');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
   
+  // Password validation states
+  const [hasUpperCase, setHasUpperCase] = useState(false);
+  const [hasLowerCase, setHasLowerCase] = useState(false);
+  const [hasNumber, setHasNumber] = useState(false);
+  const [hasSpecialChar, setHasSpecialChar] = useState(false);
+  const [isValidPassword, setIsValidPassword] = useState(false);
+  const [showValidationAlert, setShowValidationAlert] = useState(false);
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  
   const { register } = useAuth();
   const navigate = useNavigate();
+
+  // Validate password whenever it changes
+  useEffect(() => {
+    if (password) {
+      setPasswordTouched(true);
+    }
+    
+    // Check for uppercase letters
+    setHasUpperCase(/[A-Z]/.test(password));
+    
+    // Check for lowercase letters
+    setHasLowerCase(/[a-z]/.test(password));
+    
+    // Check for numbers
+    setHasNumber(/[0-9]/.test(password));
+    
+    // Check for special characters
+    setHasSpecialChar(/[^A-Za-z0-9]/.test(password));
+    
+    // Check overall validity
+    const isValid = (
+      password.length >= 8 && 
+      hasUpperCase && 
+      hasLowerCase && 
+      hasNumber && 
+      hasSpecialChar
+    );
+    
+    setIsValidPassword(isValid);
+    
+    // Show validation alert if password has been touched and is invalid
+    if (passwordTouched && !isValid) {
+      setShowValidationAlert(true);
+    } else {
+      setShowValidationAlert(false);
+    }
+  }, [password, hasUpperCase, hasLowerCase, hasNumber, hasSpecialChar, passwordTouched]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setDebugInfo(null);
+    setPasswordTouched(true);
     
     if (password !== confirmPassword) {
       setError('Passwords do not match');
       return;
     }
     
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    if (!isValidPassword) {
+      setError('Password does not meet all requirements');
+      setShowValidationAlert(true);
       return;
     }
     
     setIsLoading(true);
     try {
       setDebugInfo('Attempting to register with API...');
-      await register(name, email, password);
+      await register(name, email, password, role);
       setDebugInfo('Registration successful, redirecting...');
-      navigate('/');
+      if (role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
     } catch (err: any) {
       console.error('Registration error:', err);
       // Display more specific error messages
@@ -71,6 +124,31 @@ const Register: React.FC = () => {
           {error && (
             <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative">
               {error}
+            </div>
+          )}
+          
+          {showValidationAlert && (
+            <div className="mb-4 bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded">
+              <div className="flex">
+                <div className="flex-shrink-0">
+                  <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div className="ml-3">
+                  <p className="text-sm text-yellow-700 font-medium">Password Requirements Not Met</p>
+                  <p className="text-xs text-yellow-700 mt-1">
+                    Your password must include:
+                  </p>
+                  <ul className="text-xs text-yellow-700 list-disc ml-5 mt-1">
+                    {!hasUpperCase && <li>At least one uppercase character</li>}
+                    {!hasLowerCase && <li>At least one lowercase character</li>}
+                    {!hasNumber && <li>At least one number</li>}
+                    {!hasSpecialChar && <li>At least one special character</li>}
+                    {password.length < 8 && <li>Minimum 8 characters</li>}
+                  </ul>
+                </div>
+              </div>
             </div>
           )}
 
@@ -139,12 +217,75 @@ const Register: React.FC = () => {
                   type="password"
                   autoComplete="new-password"
                   required
-                  className="input pl-10"
+                  className={`input pl-10 ${isValidPassword ? 'border-green-500' : password ? 'border-yellow-500' : ''}`}
                   placeholder="••••••••"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setPasswordTouched(true);
+                  }}
+                  onBlur={() => setPasswordTouched(true)}
                 />
               </div>
+              
+              {/* Password strength indicators */}
+              {password.length > 0 && (
+                <div className="mt-2 space-y-2 text-sm">
+                  <p className="font-medium text-gray-700">Password must contain:</p>
+                  <ul className="space-y-1 pl-1">
+                    <li className="flex items-center">
+                      {hasUpperCase ? (
+                        <Check className="h-4 w-4 text-green-500 mr-2" />
+                      ) : (
+                        <X className="h-4 w-4 text-red-500 mr-2" />
+                      )}
+                      <span className={hasUpperCase ? 'text-green-700' : 'text-gray-600'}>
+                        At least one uppercase letter
+                      </span>
+                    </li>
+                    <li className="flex items-center">
+                      {hasLowerCase ? (
+                        <Check className="h-4 w-4 text-green-500 mr-2" />
+                      ) : (
+                        <X className="h-4 w-4 text-red-500 mr-2" />
+                      )}
+                      <span className={hasLowerCase ? 'text-green-700' : 'text-gray-600'}>
+                        At least one lowercase letter
+                      </span>
+                    </li>
+                    <li className="flex items-center">
+                      {hasNumber ? (
+                        <Check className="h-4 w-4 text-green-500 mr-2" />
+                      ) : (
+                        <X className="h-4 w-4 text-red-500 mr-2" />
+                      )}
+                      <span className={hasNumber ? 'text-green-700' : 'text-gray-600'}>
+                        At least one number
+                      </span>
+                    </li>
+                    <li className="flex items-center">
+                      {hasSpecialChar ? (
+                        <Check className="h-4 w-4 text-green-500 mr-2" />
+                      ) : (
+                        <X className="h-4 w-4 text-red-500 mr-2" />
+                      )}
+                      <span className={hasSpecialChar ? 'text-green-700' : 'text-gray-600'}>
+                        At least one special character
+                      </span>
+                    </li>
+                    <li className="flex items-center">
+                      {password.length >= 8 ? (
+                        <Check className="h-4 w-4 text-green-500 mr-2" />
+                      ) : (
+                        <X className="h-4 w-4 text-red-500 mr-2" />
+                      )}
+                      <span className={password.length >= 8 ? 'text-green-700' : 'text-gray-600'}>
+                        Minimum 8 characters
+                      </span>
+                    </li>
+                  </ul>
+                </div>
+              )}
             </div>
 
             <div>
@@ -166,6 +307,43 @@ const Register: React.FC = () => {
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                 />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Register as
+              </label>
+              <div className="flex space-x-4">
+                <div 
+                  className={`flex-1 border rounded-md p-4 cursor-pointer transition-colors ${
+                    role === 'user' 
+                      ? 'bg-primary-50 border-primary-500 text-primary-700' 
+                      : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                  }`}
+                  onClick={() => setRole('user')}
+                >
+                  <div className="flex items-center justify-center mb-2">
+                    <Users className="h-8 w-8" />
+                  </div>
+                  <p className="text-center font-medium">User</p>
+                  <p className="text-center text-xs mt-1">Browse courses & learn</p>
+                </div>
+                
+                <div 
+                  className={`flex-1 border rounded-md p-4 cursor-pointer transition-colors ${
+                    role === 'admin' 
+                      ? 'bg-secondary-50 border-secondary-500 text-secondary-700' 
+                      : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                  }`}
+                  onClick={() => setRole('admin')}
+                >
+                  <div className="flex items-center justify-center mb-2">
+                    <Shield className="h-8 w-8" />
+                  </div>
+                  <p className="text-center font-medium">Admin</p>
+                  <p className="text-center text-xs mt-1">Manage platform & content</p>
+                </div>
               </div>
             </div>
 
@@ -192,7 +370,9 @@ const Register: React.FC = () => {
             <div>
               <button
                 type="submit"
-                className="w-full btn btn-primary py-3 flex justify-center"
+                className={`w-full btn py-3 flex justify-center ${
+                  role === 'admin' ? 'btn-secondary' : 'btn-primary'
+                }`}
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -206,47 +386,12 @@ const Register: React.FC = () => {
                 ) : (
                   <span className="flex items-center">
                     <UserPlus className="h-5 w-5 mr-2" />
-                    Create account
+                    Register as {role === 'admin' ? 'Admin' : 'User'}
                   </span>
                 )}
               </button>
             </div>
           </form>
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Or continue with</span>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <div>
-                <a
-                  href="#"
-                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                    <path fillRule="evenodd" d="M10 0C4.477 0 0 4.477 0 10c0 5.523 4.477 10 10 10 5.523 0 10-4.477 10-10C20 4.477 15.523 0 10 0zm-1.786 15.318C4.693 15.318 2.3 12.926 2.3 10c0-2.926 2.393-5.318 5.914-5.318 1.502 0 2.798.524 3.792 1.398l-1.527 1.527C9.869 7.081 9.05 6.82 8.214 6.82c-1.78 0-3.22 1.476-3.22 3.28 0 1.805 1.44 3.28 3.22 3.28.865 0 1.586-.218 2.154-.6.59-.398.978-.938 1.127-1.606H8.214V9.156h3.954c.041.235.069.48.069.777 0 .975-.261 2.186-1.103 2.997-.9.808-2.063 1.388-3.72 1.388zm9.791-5.16h-1.628v1.628h-1.092v-1.628h-1.628v-1.092h1.628V7.438h1.092v1.628h1.628v1.092z" clipRule="evenodd" />
-                  </svg>
-                </a>
-              </div>
-
-              <div>
-                <a
-                  href="#"
-                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                    <path fillRule="evenodd" d="M10 0C4.477 0 0 4.477 0 10c0 5.523 4.477 10 10 10 5.523 0 10-4.477 10-10C20 4.477 15.523 0 10 0zm-1.786 15.318C4.693 15.318 2.3 12.926 2.3 10c0-2.926 2.393-5.318 5.914-5.318 1.502 0 2.798.524 3.792 1.398l-1.527 1.527C9.869 7.081 9.05 6.82 8.214 6.82c-1.78 0-3.22 1.476-3.22 3.28 0 1.805 1.44 3.28 3.22 3.28.865 0 1.586-.218 2.154-.6.59-.398.978-.938 1.127-1.606H8.214V9.156h3.954c.041.235.069.48.069.777 0 .975-.261 2.186-1.103 2.997-.9.808-2.063 1.388-3.72 1.388zm9.791-5.16h-1.628v1.628h-1.092v-1.628h-1.628v-1.092h1.628V7.438h1.092v1.628h1.628v1.092z" clipRule="evenodd" />
-                  </svg>
-                </a>
-              </div>
-            </div>
-          </div>
         </div>
       </div>
     </div>

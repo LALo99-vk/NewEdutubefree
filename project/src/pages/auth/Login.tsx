@@ -1,20 +1,20 @@
 import React, { useState } from 'react';
-import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { Mail, Lock, LogIn } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { User, Lock, LogIn, Users, Shield, InfoIcon } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+
+// Admin credentials are secured in the AuthContext
+// Do not expose admin credentials directly in the UI
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'user' | 'admin'>('user');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
   const { login } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  
-  // Get redirect path from location state if available
-  const redirectTo = location.state?.redirectTo || '/';
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,15 +22,26 @@ const Login: React.FC = () => {
     setIsLoading(true);
     
     try {
-      await login(email, password);
-      // Navigate to the redirect path after successful login
-      navigate(redirectTo);
-    } catch (err) {
-      setError('Invalid email or password');
+      // Admin credentials verification will be handled by the AuthContext
+      
+      // Pass the role parameter to the login function
+      await login(email, password, role); 
+      
+      // Redirect based on role
+      if (role === 'admin') {
+        navigate('/admin');
+      } else {
+        navigate('/');
+      }
+    } catch (err: any) {
+      console.error('Login error:', err);
+      setError(err.message || 'Failed to login. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }
   };
+
+  // We no longer need this helper function as we're selecting role directly via UI
 
   return (
     <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8 bg-gray-50">
@@ -54,6 +65,43 @@ const Login: React.FC = () => {
             </div>
           )}
           
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Login as
+            </label>
+            <div className="flex space-x-4">
+              <div 
+                className={`flex-1 border rounded-md p-4 cursor-pointer transition-colors ${
+                  role === 'user' 
+                    ? 'bg-primary-50 border-primary-500 text-primary-700' 
+                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                }`}
+                onClick={() => setRole('user')}
+              >
+                <div className="flex items-center justify-center mb-2">
+                  <Users className="h-8 w-8" />
+                </div>
+                <p className="text-center font-medium">User</p>
+                <p className="text-center text-xs mt-1">Browse courses & learn</p>
+              </div>
+              
+              <div 
+                className={`flex-1 border rounded-md p-4 cursor-pointer transition-colors ${
+                  role === 'admin' 
+                    ? 'bg-secondary-50 border-secondary-500 text-secondary-700' 
+                    : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                }`}
+                onClick={() => setRole('admin')}
+              >
+                <div className="flex items-center justify-center mb-2">
+                  <Shield className="h-8 w-8" />
+                </div>
+                <p className="text-center font-medium">Admin</p>
+                <p className="text-center text-xs mt-1">Manage platform & content</p>
+              </div>
+            </div>
+          </div>
+          
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
@@ -61,7 +109,7 @@ const Login: React.FC = () => {
               </label>
               <div className="mt-1 relative rounded-md shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Mail className="h-5 w-5 text-gray-400" />
+                  <User className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
                   id="email"
@@ -122,7 +170,9 @@ const Login: React.FC = () => {
             <div>
               <button
                 type="submit"
-                className="w-full btn btn-primary py-3 flex justify-center"
+                className={`w-full btn py-3 flex justify-center ${
+                  role === 'admin' ? 'btn-secondary' : 'btn-primary'
+                }`}
                 disabled={isLoading}
               >
                 {isLoading ? (
@@ -131,12 +181,12 @@ const Login: React.FC = () => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Processing...
+                    Signing in...
                   </span>
                 ) : (
                   <span className="flex items-center">
                     <LogIn className="h-5 w-5 mr-2" />
-                    Sign in
+                    Sign in as {role === 'admin' ? 'Admin' : 'User'}
                   </span>
                 )}
               </button>
@@ -149,32 +199,22 @@ const Login: React.FC = () => {
                 <div className="w-full border-t border-gray-300"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                <span className="px-2 bg-white text-gray-500">Login Information</span>
               </div>
             </div>
-
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <div>
-                <a
-                  href="#"
-                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                    <path fillRule="evenodd" d="M10 0C4.477 0 0 4.477 0 10c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.342-3.369-1.342-.454-1.155-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.022A9.578 9.578 0 0110 4.836c.85.004 1.705.114 2.504.336 1.909-1.291 2.747-1.022 2.747-1.022.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.933.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C17.14 18.163 20 14.418 20 10 20 4.477 15.523 0 10 0z" clipRule="evenodd" />
-                  </svg>
-                </a>
+            <div className="mt-4 text-sm text-gray-600">
+              <div className="bg-blue-50 p-3 rounded mb-2 flex items-start">
+                <InfoIcon className="h-5 w-5 text-blue-500 mr-2 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-blue-800 font-medium">Secure Admin Access</p>
+                  <p className="text-blue-700 text-xs mt-1">
+                    Admin login requires authorized credentials. If you're an administrator, please use your secure admin credentials to access the admin dashboard.
+                  </p>
+                </div>
               </div>
-
-              <div>
-                <a
-                  href="#"
-                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                    <path fillRule="evenodd" d="M10 0C4.477 0 0 4.477 0 10c0 5.523 4.477 10 10 10 5.523 0 10-4.477 10-10C20 4.477 15.523 0 10 0zm-1.786 15.318C4.693 15.318 2.3 12.926 2.3 10c0-2.926 2.393-5.318 5.914-5.318 1.502 0 2.798.524 3.792 1.398l-1.527 1.527C9.869 7.081 9.05 6.82 8.214 6.82c-1.78 0-3.22 1.476-3.22 3.28 0 1.805 1.44 3.28 3.22 3.28.865 0 1.586-.218 2.154-.6.59-.398.978-.938 1.127-1.606H8.214V9.156h3.954c.041.235.069.48.069.777 0 .975-.261 2.186-1.103 2.997-.9.808-2.063 1.388-3.72 1.388zm9.791-5.16h-1.628v1.628h-1.092v-1.628h-1.628v-1.092h1.628V7.438h1.092v1.628h1.628v1.092z" clipRule="evenodd" />
-                  </svg>
-                </a>
-              </div>
+              <p className="text-xs text-gray-500 mt-2">
+                Note: Only authorized admin accounts can access admin controls. Regular users don't have access to administrative features.
+              </p>
             </div>
           </div>
         </div>

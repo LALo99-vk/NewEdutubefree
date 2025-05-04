@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Star, Users, Clock, CheckCircle } from 'lucide-react';
+import { Star, Users, Clock, CheckCircle, Youtube } from 'lucide-react';
 import { Course } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import ProgressBar from './ProgressBar';
@@ -15,17 +15,22 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
   const [progress, setProgress] = useState<number>(0);
   const [showProgress, setShowProgress] = useState<boolean>(false);
   
-  // Calculate total lessons and duration
-  const totalLessons = course.modules.reduce((sum, module) => sum + module.lessons.length, 0);
+  // Calculate total lessons and duration safely
+  const totalLessons = course.modules ? 
+    course.modules.reduce((sum, module) => sum + module.lessons.length, 0) : 
+    course.lessonsCount || 0;
   
-  const totalDuration = course.modules.reduce((sum, module) => {
-    return sum + module.lessons.reduce((lessonSum, lesson) => {
-      const [minutes, seconds] = lesson.duration.split(':').map(Number);
-      return lessonSum + minutes + (seconds / 60);
-    }, 0);
-  }, 0);
-  
-  const formattedDuration = `${Math.floor(totalDuration)}h ${Math.round((totalDuration % 1) * 60)}m`;
+  const formattedDuration = course.modules ? 
+    (() => {
+      const totalDuration = course.modules.reduce((sum, module) => {
+        return sum + module.lessons.reduce((lessonSum, lesson) => {
+          const [minutes, seconds] = lesson.duration.split(':').map(Number);
+          return lessonSum + minutes + (seconds / 60);
+        }, 0);
+      }, 0);
+      return `${Math.floor(totalDuration)}h ${Math.round((totalDuration % 1) * 60)}m`;
+    })() : 
+    course.duration || '1h 30m';
 
   // Fetch course progress from local storage if available
   useEffect(() => {
@@ -33,10 +38,10 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
       const mockProgressKey = `mock-progress-${course.id}`;
       const storedProgress = localStorage.getItem(mockProgressKey);
       
-      if (storedProgress) {
+      if (storedProgress && totalLessons > 0) {
         try {
           const mockData = JSON.parse(storedProgress);
-          if (mockData.completedLessons && totalLessons > 0) {
+          if (mockData.completedLessons) {
             // Calculate progress percentage
             const completedCount = mockData.completedLessons.length;
             
@@ -80,6 +85,9 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
     if (progress === 0) return "Start Course";
     if (progress === 100) return "Review Course";
     
+    // For courses without modules or with progress, return a default
+    if (!course.modules) return "Continue Learning";
+    
     // Find the next incomplete lesson
     try {
       const mockProgressKey = `mock-progress-${course.id}`;
@@ -99,97 +107,81 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
         }
       }
     } catch (err) {
-      console.error('Error finding next lesson:', err);
+      console.error('Error getting resume text:', err);
     }
     
     return "Continue Learning";
   };
 
   return (
-    <div 
-      className="card overflow-hidden transition-all duration-300 hover:translate-y-[-5px]"
-      onClick={handleCardClick}
-    >
+    <div className="bg-white rounded-lg shadow-md overflow-hidden flex flex-col h-full transition-transform hover:scale-[1.02] cursor-pointer" onClick={handleCardClick}>
       <div className="relative">
         <img 
-          src={course.thumbnail} 
+          src={course.thumbnail || "https://via.placeholder.com/640x360?text=Course+Image"} 
           alt={course.title} 
-          className="h-48 w-full object-cover"
+          className="w-full h-48 object-cover"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            target.src = "https://via.placeholder.com/640x360?text=Course+Image";
+          }}
         />
-        {course.featured && (
-          <div className="absolute top-3 right-3">
-            <span className="badge bg-primary-500 text-white">Featured</span>
+        {course.videoUrl && (
+          <div className="absolute top-2 right-2 bg-red-600 text-white p-1 rounded-full" title="Includes video content">
+            <Youtube size={16} />
           </div>
         )}
-        <div className="absolute bottom-3 left-3">
-          <span className="badge bg-white text-gray-800">
-            {course.level.charAt(0).toUpperCase() + course.level.slice(1)}
-          </span>
-        </div>
-        
-        {/* Progress indicator overlay */}
-        {showProgress && progress > 0 && (
-          <div className="absolute top-3 left-3 flex items-center bg-black bg-opacity-70 px-2 py-1 rounded-md">
-            {progress === 100 ? (
-              <div className="flex items-center text-green-400">
-                <CheckCircle className="h-4 w-4 mr-1" />
-                <span className="text-xs font-medium">Completed</span>
-              </div>
-            ) : (
-              <div className="flex items-center text-white">
-                <span className="text-xs font-medium">{progress}% Complete</span>
-              </div>
-            )}
+        {showProgress && (
+          <div className="absolute bottom-0 left-0 right-0 h-1.5 bg-gray-200">
+            <div 
+              className={`h-full ${progress < 25 ? 'bg-red-500' : progress < 70 ? 'bg-yellow-500' : 'bg-green-500'}`}
+              style={{ width: `${progress}%` }}
+            ></div>
           </div>
         )}
       </div>
-      <div className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="badge badge-primary">{course.category}</span>
-          <div className="flex items-center">
-            <Star className="h-4 w-4 text-yellow-400 mr-1" />
-            <span className="text-sm font-medium">{course.rating.toFixed(1)}</span>
-          </div>
-        </div>
-        <h3 className="text-lg font-semibold mb-2 line-clamp-2">{course.title}</h3>
-        <p className="text-gray-600 text-sm mb-3 line-clamp-2">{course.description}</p>
-        <div className="text-sm text-gray-500 mb-3">Instructor: {course.instructor}</div>
-        
-        {/* Show progress bar for enrolled courses */}
-        {showProgress && (
-          <div className="mb-3">
-            <ProgressBar 
-              progress={progress} 
-              height={4}
-              color={progress < 30 ? 'bg-red-500' : progress < 70 ? 'bg-yellow-500' : 'bg-green-500'}
-              showPercentage={false}
-            />
-          </div>
-        )}
-        
-        <div className="flex items-center justify-between text-sm text-gray-600">
-          <div className="flex items-center">
-            <Users className="h-4 w-4 mr-1" />
-            <span>{course.totalStudents.toLocaleString()} students</span>
-          </div>
-          <div className="flex items-center">
-            <Clock className="h-4 w-4 mr-1" />
-            <span>{totalLessons} lessons · {formattedDuration}</span>
+      
+      <div className="p-4 flex-grow flex flex-col">
+        <div className="mb-2 flex items-center text-amber-500">
+          <Star className="fill-current w-4 h-4 mr-1" />
+          <span className="text-sm font-medium">{course.rating.toFixed(1)}</span>
+          
+          <div className="ml-auto flex items-center text-gray-500 text-xs">
+            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${
+              course.level === 'beginner' ? 'bg-green-100 text-green-800' :
+              course.level === 'intermediate' ? 'bg-blue-100 text-blue-800' :
+              'bg-purple-100 text-purple-800'
+            }`}>
+              {course.level.charAt(0).toUpperCase() + course.level.slice(1)}
+            </span>
           </div>
         </div>
         
-        {/* Continue or Start button for authenticated users */}
-        {isAuthenticated && (
-          <button 
-            className="mt-3 w-full py-2 px-4 bg-primary-600 text-white rounded-md font-medium hover:bg-primary-700 transition-colors"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/courses/${course.id}`);
-            }}
-          >
+        <h3 className="font-bold text-gray-900 mb-1.5 text-lg leading-tight">{course.title}</h3>
+        
+        <p className="text-gray-600 text-sm mb-3 line-clamp-2 flex-grow">{course.description}</p>
+        
+        <div className="text-xs text-gray-500 flex items-center mt-auto">
+          <span className="flex items-center mr-3">
+            <Users className="w-3 h-3 mr-1" />
+            {course.studentsCount || 0} students
+          </span>
+          
+          <span className="flex items-center mr-3">
+            <CheckCircle className="w-3 h-3 mr-1" />
+            {totalLessons} lessons
+          </span>
+          
+          <span className="flex items-center">
+            <Clock className="w-3 h-3 mr-1" />
+            {formattedDuration}
+          </span>
+        </div>
+        
+        <div className="mt-4">
+          <button className="w-full py-2 bg-primary-600 hover:bg-primary-700 text-white rounded text-sm font-medium transition">
             {getResumeText()}
           </button>
-        )}
+        </div>
       </div>
     </div>
   );
