@@ -1420,7 +1420,25 @@ const AdminDashboard: React.FC = () => {
                   
                   if (editingCourse) {
                     // Edit existing course
-                    handleUpdateCourse(editingCourse);
+                    const formElement = e.currentTarget;
+                    const formData = new FormData(formElement);
+                    
+                    // Update the editingCourse with form values
+                    const updatedCourse = {
+                      ...editingCourse,
+                      title: formData.get('title') as string,
+                      description: formData.get('description') as string,
+                      instructor: formData.get('instructor') as string,
+                      thumbnail: formData.get('thumbnail') as string,
+                      videoUrl: formData.get('videoUrl') as string,
+                      level: formData.get('level') as string,
+                      category: {
+                        _id: formData.get('category') as string,
+                        name: categories.find(c => c._id === formData.get('category'))?.name || editingCourse.category.name
+                      },
+                    };
+                    
+                    handleUpdateCourse(updatedCourse);
                   } else {
                     // Add new course
                     const formElement = e.currentTarget;
