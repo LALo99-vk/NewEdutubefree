@@ -19,7 +19,7 @@ import 'react-pdf/dist/esm/Page/TextLayer.css';
 const MIN_WATCH_PERCENTAGE = 90; // Minimum percentage of video that must be watched
 
 // Set up PDF.js worker
-pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
 
 const CourseDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();

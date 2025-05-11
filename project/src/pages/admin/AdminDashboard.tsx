@@ -145,6 +145,8 @@ const AdminDashboard: React.FC = () => {
   const [editingCourse, setEditingCourse] = useState<Course | null>(null);
   const [viewingCourse, setViewingCourse] = useState<Course | null>(null);
   const [deletingCourse, setDeletingCourse] = useState<Course | null>(null);
+  const [showDeleteUserModal, setShowDeleteUserModal] = useState<boolean>(false);
+  const [deletingUser, setDeletingUser] = useState<User | null>(null);
   
   // Redirect if not admin
   useEffect(() => {
@@ -360,6 +362,31 @@ const AdminDashboard: React.FC = () => {
     } catch (err) {
       console.error('Error updating course:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    }
+  };
+
+  // Update handleDeleteUser to use confirmation modal
+  const handleDeleteUser = (user: User) => {
+    setDeletingUser(user);
+    setShowDeleteUserModal(true);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!deletingUser) return;
+    try {
+      setUsers(users.filter(user => user._id !== deletingUser._id));
+      const response = await authFetch(`http://localhost:5000/api/users/${deletingUser._id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        throw new Error('Failed to delete user');
+      }
+      setShowDeleteUserModal(false);
+      setDeletingUser(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      setShowDeleteUserModal(false);
+      setDeletingUser(null);
     }
   };
 
@@ -813,14 +840,10 @@ const AdminDashboard: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           {user.role !== 'admin' && (
                             <button 
-                              onClick={() => toggleUserAccess(user._id, user.status)}
-                              className={`px-3 py-1 rounded-md ${
-                                user.status === 'active' || !user.status
-                                  ? 'bg-red-500 hover:bg-red-600 text-white' 
-                                  : 'bg-green-500 hover:bg-green-600 text-white'
-                              }`}
+                              onClick={() => handleDeleteUser(user)}
+                              className="px-3 py-1 rounded-md bg-red-500 hover:bg-red-600 text-white"
                             >
-                              {user.status === 'active' || !user.status ? 'Block Access' : 'Allow Access'}
+                              Delete User
                             </button>
                           )}
                         </td>
@@ -1446,6 +1469,30 @@ const AdminDashboard: React.FC = () => {
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete User Confirmation Modal */}
+        {showDeleteUserModal && deletingUser && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50">
+            <div className="bg-white rounded-lg shadow-lg p-6 max-w-sm w-full">
+              <h3 className="text-lg font-semibold mb-4">Delete User</h3>
+              <p className="mb-6 text-gray-700">Are you sure you want to permanently delete <span className="font-bold">{deletingUser.name}</span>? This action cannot be undone.</p>
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => { setShowDeleteUserModal(false); setDeletingUser(null); }}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDeleteUser}
+                  className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Delete
+                </button>
               </div>
             </div>
           </div>
