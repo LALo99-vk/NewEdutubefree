@@ -5,6 +5,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Course, Lesson } from '../../types';
+import VideoPlayer from '../../components/ui/VideoPlayer';
 import VideoPlaceholder from '../../components/ui/VideoPlaceholder';
 
 const MIN_WATCH_PERCENTAGE = 90; // Minimum percentage of video that must be watched
@@ -303,59 +304,43 @@ const CourseDetailPage: React.FC = () => {
             {/* Video player */}
             <div ref={videoRef} className="relative rounded-lg overflow-hidden shadow-lg max-w-3xl mx-auto">
               {(currentLesson?.videoUrl || course?.videoUrl) ? (
-                <div className="aspect-w-16 aspect-h-9 w-full h-[400px]">
-                  <iframe
-                    ref={iframeRef}
-                    src={formatYoutubeUrl(currentLesson?.videoUrl || course?.videoUrl || '')}
-                    title={currentLesson?.title || course?.title || ''}
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    className="w-full h-full"
-                    style={{ maxWidth: '100%' }}
-                    loading="lazy"
-                    onError={(e) => {
-                      console.error('Error loading video:', e);
-                    }}
-                  />
-                </div>
+                <VideoPlayer
+                  videoUrl={currentLesson?.videoUrl || course?.videoUrl || ''}
+                  title={currentLesson?.title || course?.title || ''}
+                  courseId={course?._id}
+                  lessonId={currentLesson?._id}
+                  totalLessons={totalLessons}
+                  onNextLesson={() => {
+                    // Find next lesson
+                    if (!course?.modules || !currentLesson) return;
+                    
+                    let foundCurrent = false;
+                    for (const module of course.modules) {
+                      for (let i = 0; i < module.lessons.length; i++) {
+                        if (foundCurrent && i < module.lessons.length) {
+                          // Found next lesson
+                          setCurrentLesson(module.lessons[i]);
+                          return;
+                        }
+                        if (module.lessons[i]._id === currentLesson._id) {
+                          foundCurrent = true;
+                        }
+                      }
+                    }
+                  }}
+                  availableLessons={course?.modules?.flatMap(module => 
+                    module.lessons.map(lesson => ({
+                      id: lesson._id,
+                      moduleId: module._id
+                    }))
+                  ) || []}
+                />
               ) : (
                 <VideoPlaceholder 
                   title="No video available for this lesson" 
                   progress={courseProgress}
                 />
               )}
-            </div>
-            
-            {/* Progress tracking below video */}
-            <div className="mt-4 mb-6">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-sm text-gray-700 font-medium">Your Progress</div>
-                <div className="text-sm text-gray-500">
-                  {completedLessons.size} of {totalLessons} lessons
-                </div>
-              </div>
-              
-              <div className="flex items-center space-x-3">
-                <div className="flex-shrink-0">
-                  <input 
-                    type="radio" 
-                    className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded-full"
-                    checked={completedLessons.has(currentLesson?._id || '')}
-                    onChange={() => currentLesson && markLessonAsComplete(currentLesson._id)}
-                  />
-                </div>
-                <div className="text-sm font-medium text-gray-600">
-                  {courseProgress}% complete
-                </div>
-                <div className="flex-grow"></div>
-                <button 
-                  onClick={() => currentLesson && markLessonAsComplete(currentLesson._id)}
-                  className="bg-gray-200 hover:bg-gray-300 px-4 py-1.5 rounded text-sm"
-                >
-                  Mark as complete
-                </button>
-              </div>
             </div>
             
             {/* Current lesson title and description */}

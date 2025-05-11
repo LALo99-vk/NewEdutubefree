@@ -11,6 +11,7 @@ interface UseProgressTrackingResult {
   isCompleted: boolean;
   completedLessons: string[];
   nextLessonId: string | null;
+  watchProgress: Record<string, number>;
   markLessonAsComplete: (lessonId: string) => void;
   updateWatchProgress: (lessonId: string, percentage: number) => void;
 }
@@ -29,8 +30,9 @@ export const useProgressTracking = (
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [completedLessons, setCompletedLessons] = useState<string[]>([]);
   const [nextLessonId, setNextLessonId] = useState<string | null>(null);
+  const [watchProgress, setWatchProgress] = useState<Record<string, number>>({});
   
-  // Load progress data from localStorage or API
+  // Load progress data from localStorage
   useEffect(() => {
     if (!courseId || !isAuthenticated) return;
     
@@ -47,52 +49,55 @@ export const useProgressTracking = (
             setCompletedLessons(mockData.completedLessons);
           }
           
-          // Calculate overall progress with weight for partial completion
-          if (totalLessons > 0) {
-            let completedCount = mockData.completedLessons?.length || 0;
-            let inProgressCount = 0;
-            
-            // Calculate partial credit for in-progress lessons
-            if (mockData.watchProgress) {
-              Object.keys(mockData.watchProgress).forEach(lid => {
-                if (!mockData.completedLessons.includes(lid) && mockData.watchProgress[lid] > 10) {
-                  // Give partial credit based on actual watch percentage
-                  const watchPercent = mockData.watchProgress[lid];
-                  inProgressCount += (watchPercent / 100);
-                }
-              });
-            }
-            
-            // Calculate overall course progress
-            const weightedProgress = completedCount + inProgressCount;
-            const progressPercentage = Math.round((weightedProgress / totalLessons) * 100);
-            
-            setProgress(progressPercentage);
-            setIsCompleted(progressPercentage === 100);
+          // Set watch progress
+          if (mockData.watchProgress) {
+            setWatchProgress(mockData.watchProgress);
           }
           
-          // Find the next lesson that hasn't been completed
+          // Calculate overall progress with improved weighting
+          if (totalLessons > 0) {
+            let weightedProgress = 0;
+            
+            // Calculate weighted progress for each lesson
+            availableLessons.forEach(lesson => {
+              const lessonId = lesson.id;
+              const watchPercentage = mockData.watchProgress?.[lessonId] || 0;
+              
+              if (mockData.completedLessons?.includes(lessonId)) {
+                // Completed lessons count as 100%
+                weightedProgress += 1;
+              } else if (watchPercentage >= 90) {
+                // Lessons watched 90% or more count as 95%
+                weightedProgress += 0.95;
+              } else if (watchPercentage >= 50) {
+                // Lessons watched 50% or more count as 75%
+                weightedProgress += 0.75;
+              } else if (watchPercentage > 0) {
+                // Partially watched lessons count proportionally
+                weightedProgress += (watchPercentage / 100) * 0.5;
+              }
+            });
+            
+            // Calculate final progress percentage
+            const progressPercentage = Math.round((weightedProgress / totalLessons) * 100);
+            setProgress(progressPercentage);
+            setIsCompleted(progressPercentage >= 95); // Consider course complete at 95%
+          }
+          
+          // Find next lesson
           if (availableLessons.length > 0) {
             const nextLesson = availableLessons.find(
-              lesson => !mockData.completedLessons.includes(lesson.id)
+              lesson => !mockData.completedLessons?.includes(lesson.id)
             );
-            
-            if (nextLesson) {
-              setNextLessonId(nextLesson.id);
-            } else {
-              setNextLessonId(null);
-            }
+            setNextLessonId(nextLesson?.id || null);
           }
         } else {
-          // No progress data yet
+          // Initialize progress data
           setProgress(0);
           setIsCompleted(false);
           setCompletedLessons([]);
-          
-          // Set first lesson as next if no progress data
-          if (availableLessons.length > 0) {
-            setNextLessonId(availableLessons[0].id);
-          }
+          setWatchProgress({});
+          setNextLessonId(availableLessons[0]?.id || null);
         }
       } catch (err) {
         console.error('Error loading progress data:', err);
@@ -102,153 +107,117 @@ export const useProgressTracking = (
     loadProgressData();
   }, [courseId, isAuthenticated, totalLessons, availableLessons]);
   
-  // Mark a lesson as complete
-  const markLessonAsComplete = (lessonId: string) => {
-    if (!courseId || !lessonId) return;
-    
-    try {
-      const mockProgressKey = `mock-progress-${courseId}`;
-      const storedProgress = localStorage.getItem(mockProgressKey);
-      let progressData: ProgressData;
-      
-      if (storedProgress) {
-        progressData = JSON.parse(storedProgress);
-        
-        // Add to completed lessons if not already there
-        if (!progressData.completedLessons.includes(lessonId)) {
-          progressData.completedLessons.push(lessonId);
-        }
-        
-        // Ensure watch progress is set to 100%
-        if (!progressData.watchProgress) {
-          progressData.watchProgress = {};
-        }
-        progressData.watchProgress[lessonId] = 100;
-      } else {
-        // Initialize new progress data
-        progressData = {
-          completedLessons: [lessonId],
-          watchProgress: { [lessonId]: 100 }
-        };
-      }
-      
-      // Save updated progress data
-      localStorage.setItem(mockProgressKey, JSON.stringify(progressData));
-      
-      // Update state
-      setCompletedLessons(progressData.completedLessons);
-      
-      // Calculate new progress percentage
-      if (totalLessons > 0) {
-        let inProgressCount = 0;
-        
-        // Calculate partial credit for in-progress lessons
-        Object.keys(progressData.watchProgress).forEach(lid => {
-          if (!progressData.completedLessons.includes(lid) && progressData.watchProgress[lid] > 10) {
-            // Give partial credit based on actual watch percentage
-            const watchPercent = progressData.watchProgress[lid];
-            inProgressCount += (watchPercent / 100);
-          }
-        });
-        
-        // Calculate overall course progress
-        const weightedProgress = progressData.completedLessons.length + inProgressCount;
-        const progressPercentage = Math.round((weightedProgress / totalLessons) * 100);
-        
-        setProgress(progressPercentage);
-        setIsCompleted(progressPercentage === 100);
-      }
-      
-      // Update next lesson
-      if (availableLessons.length > 0) {
-        const nextLesson = availableLessons.find(
-          lesson => !progressData.completedLessons.includes(lesson.id)
-        );
-        
-        if (nextLesson) {
-          setNextLessonId(nextLesson.id);
-        } else {
-          setNextLessonId(null);
-        }
-      }
-    } catch (err) {
-      console.error('Error marking lesson as complete:', err);
-    }
-  };
-  
-  // Update watch progress for a lesson
+  // Update watch progress with improved responsiveness
   const updateWatchProgress = (lessonId: string, percentage: number) => {
     if (!courseId || !lessonId) return;
     
     try {
       const mockProgressKey = `mock-progress-${courseId}`;
       const storedProgress = localStorage.getItem(mockProgressKey);
-      let progressData: ProgressData;
+      let progressData: ProgressData = storedProgress ? JSON.parse(storedProgress) : {
+        completedLessons: [],
+        watchProgress: {}
+      };
       
-      if (storedProgress) {
-        progressData = JSON.parse(storedProgress);
-        
-        // Initialize watch progress if needed
-        if (!progressData.watchProgress) {
-          progressData.watchProgress = {};
-        }
-        
-        // Update watch percentage
-        progressData.watchProgress[lessonId] = percentage;
-        
-        // Auto-complete if watched 95% or more
-        if (percentage >= 95 && !progressData.completedLessons.includes(lessonId)) {
-          progressData.completedLessons.push(lessonId);
-        }
-      } else {
-        // Initialize new progress data
-        progressData = {
-          completedLessons: percentage >= 95 ? [lessonId] : [],
-          watchProgress: { [lessonId]: percentage }
-        };
+      // Update watch progress
+      progressData.watchProgress = {
+        ...progressData.watchProgress,
+        [lessonId]: percentage
+      };
+      
+      // Auto-complete lesson if watched enough
+      if (percentage >= 90 && !progressData.completedLessons.includes(lessonId)) {
+        progressData.completedLessons.push(lessonId);
       }
       
-      // Save updated progress data
+      // Save updated progress
       localStorage.setItem(mockProgressKey, JSON.stringify(progressData));
       
-      // Update state
+      // Update state immediately for better responsiveness
+      setWatchProgress(progressData.watchProgress);
       setCompletedLessons(progressData.completedLessons);
       
-      // Calculate new progress percentage
-      if (totalLessons > 0) {
-        let inProgressCount = 0;
+      // Recalculate overall progress
+      let weightedProgress = 0;
+      availableLessons.forEach(lesson => {
+        const lessonWatchPercentage = progressData.watchProgress[lesson.id] || 0;
         
-        // Calculate partial credit for in-progress lessons
-        Object.keys(progressData.watchProgress).forEach(lid => {
-          if (!progressData.completedLessons.includes(lid) && progressData.watchProgress[lid] > 10) {
-            // Give partial credit based on actual watch percentage
-            const watchPercent = progressData.watchProgress[lid];
-            inProgressCount += (watchPercent / 100);
-          }
-        });
-        
-        // Calculate overall course progress
-        const weightedProgress = progressData.completedLessons.length + inProgressCount;
-        const progressPercentage = Math.round((weightedProgress / totalLessons) * 100);
-        
-        setProgress(progressPercentage);
-        setIsCompleted(progressPercentage === 100);
-      }
-      
-      // Update next lesson if all completed
-      if (availableLessons.length > 0 && percentage >= 95) {
-        const nextLesson = availableLessons.find(
-          lesson => !progressData.completedLessons.includes(lesson.id)
-        );
-        
-        if (nextLesson) {
-          setNextLessonId(nextLesson.id);
-        } else {
-          setNextLessonId(null);
+        if (progressData.completedLessons.includes(lesson.id)) {
+          weightedProgress += 1;
+        } else if (lessonWatchPercentage >= 90) {
+          weightedProgress += 0.95;
+        } else if (lessonWatchPercentage >= 50) {
+          weightedProgress += 0.75;
+        } else if (lessonWatchPercentage > 0) {
+          weightedProgress += (lessonWatchPercentage / 100) * 0.5;
         }
-      }
+      });
+      
+      const newProgress = Math.round((weightedProgress / totalLessons) * 100);
+      setProgress(newProgress);
+      setIsCompleted(newProgress >= 95);
+      
+      // Update next lesson
+      const nextLesson = availableLessons.find(
+        lesson => !progressData.completedLessons.includes(lesson.id)
+      );
+      setNextLessonId(nextLesson?.id || null);
     } catch (err) {
       console.error('Error updating watch progress:', err);
+    }
+  };
+  
+  // Mark lesson as complete with immediate feedback
+  const markLessonAsComplete = (lessonId: string) => {
+    if (!courseId || !lessonId) return;
+    
+    try {
+      const mockProgressKey = `mock-progress-${courseId}`;
+      const storedProgress = localStorage.getItem(mockProgressKey);
+      let progressData: ProgressData = storedProgress ? JSON.parse(storedProgress) : {
+        completedLessons: [],
+        watchProgress: {}
+      };
+      
+      // Add to completed lessons if not already there
+      if (!progressData.completedLessons.includes(lessonId)) {
+        progressData.completedLessons.push(lessonId);
+        progressData.watchProgress[lessonId] = 100;
+      }
+      
+      // Save updated progress
+      localStorage.setItem(mockProgressKey, JSON.stringify(progressData));
+      
+      // Update state immediately
+      setCompletedLessons(progressData.completedLessons);
+      setWatchProgress(progressData.watchProgress);
+      
+      // Recalculate progress
+      let weightedProgress = progressData.completedLessons.length;
+      availableLessons.forEach(lesson => {
+        if (!progressData.completedLessons.includes(lesson.id)) {
+          const watchPercentage = progressData.watchProgress[lesson.id] || 0;
+          if (watchPercentage >= 90) {
+            weightedProgress += 0.95;
+          } else if (watchPercentage >= 50) {
+            weightedProgress += 0.75;
+          } else if (watchPercentage > 0) {
+            weightedProgress += (watchPercentage / 100) * 0.5;
+          }
+        }
+      });
+      
+      const newProgress = Math.round((weightedProgress / totalLessons) * 100);
+      setProgress(newProgress);
+      setIsCompleted(newProgress >= 95);
+      
+      // Update next lesson
+      const nextLesson = availableLessons.find(
+        lesson => !progressData.completedLessons.includes(lesson.id)
+      );
+      setNextLessonId(nextLesson?.id || null);
+    } catch (err) {
+      console.error('Error marking lesson as complete:', err);
     }
   };
   
@@ -257,6 +226,7 @@ export const useProgressTracking = (
     isCompleted,
     completedLessons,
     nextLessonId,
+    watchProgress,
     markLessonAsComplete,
     updateWatchProgress
   };
