@@ -5,13 +5,21 @@ import {
   ChevronRight,
   Users,
   Download,
-  FileText
+  FileText,
+  Eye,
+  X
 } from 'lucide-react';
 import { Course, Lesson } from '../../types';
 import VideoPlayer from '../../components/ui/VideoPlayer';
 import VideoPlaceholder from '../../components/ui/VideoPlaceholder';
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/esm/Page/AnnotationLayer.css';
+import 'react-pdf/dist/esm/Page/TextLayer.css';
 
 const MIN_WATCH_PERCENTAGE = 90; // Minimum percentage of video that must be watched
+
+// Set up PDF.js worker
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 
 const CourseDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -28,6 +36,9 @@ const CourseDetailPage: React.FC = () => {
   const [completedLessons, setCompletedLessons] = useState<Set<string>>(new Set());
   const [lessonProgress, setLessonProgress] = useState<Record<string, number>>({});
   const [isVideoReady, setIsVideoReady] = useState(false);
+  const [showPdfViewer, setShowPdfViewer] = useState(false);
+  const [numPages, setNumPages] = useState<number | null>(null);
+  const [pageNumber, setPageNumber] = useState(1);
 
   // Listen for messages from the YouTube iframe
   useEffect(() => {
@@ -239,6 +250,75 @@ const CourseDetailPage: React.FC = () => {
     }
   };
   
+  // Add this function to handle PDF loading
+  const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
+    setNumPages(numPages);
+  };
+
+  // Add this component for the PDF viewer modal
+  const PdfViewerModal = () => {
+    if (!course?.studyMaterial) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-lg w-full max-w-4xl h-[80vh] flex flex-col">
+          <div className="flex justify-between items-center p-4 border-b">
+            <h3 className="text-xl font-semibold">{course.studyMaterial.fileName}</h3>
+            <button
+              onClick={() => setShowPdfViewer(false)}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+          <div className="flex-1 overflow-auto p-4">
+            <Document
+              file={course.studyMaterial.fileUrl}
+              onLoadSuccess={onDocumentLoadSuccess}
+              className="flex flex-col items-center"
+            >
+              <Page 
+                pageNumber={pageNumber} 
+                renderTextLayer={true}
+                renderAnnotationLayer={true}
+                className="shadow-lg"
+              />
+            </Document>
+          </div>
+          <div className="p-4 border-t flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setPageNumber(prev => Math.max(prev - 1, 1))}
+                disabled={pageNumber <= 1}
+                className="px-3 py-1 bg-gray-100 rounded disabled:opacity-50"
+              >
+                Previous
+              </button>
+              <span>
+                Page {pageNumber} of {numPages}
+              </span>
+              <button
+                onClick={() => setPageNumber(prev => Math.min(prev + 1, numPages || prev))}
+                disabled={pageNumber >= (numPages || 1)}
+                className="px-3 py-1 bg-gray-100 rounded disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+            <a
+              href={course.studyMaterial.fileUrl}
+              download
+              className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
+            >
+              <Download className="h-4 w-4" />
+              Download PDF
+            </a>
+          </div>
+        </div>
+      </div>
+    );
+  };
+  
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -374,14 +454,23 @@ const CourseDetailPage: React.FC = () => {
                       </p>
                     </div>
                   </div>
-                  <a
-                    href={course.studyMaterial.fileUrl}
-                    download
-                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
-                  >
-                    <Download className="h-4 w-4" />
-                    Download PDF
-                  </a>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowPdfViewer(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
+                    >
+                      <Eye className="h-4 w-4" />
+                      View PDF
+                    </button>
+                    <a
+                      href={course.studyMaterial.fileUrl}
+                      download
+                      className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download
+                    </a>
+                  </div>
                 </div>
               </div>
             )}
@@ -444,6 +533,9 @@ const CourseDetailPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Add the PDF viewer modal */}
+      {showPdfViewer && <PdfViewerModal />}
     </div>
   );
 };
