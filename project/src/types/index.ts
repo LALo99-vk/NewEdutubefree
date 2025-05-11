@@ -8,35 +8,35 @@ export interface User {
 }
 
 export interface Course {
-  id: string;
+  _id: string;
   title: string;
   description: string;
   instructor: string;
   thumbnail: string;
-  category: string;
+  videoUrl?: string;
+  category: {
+    _id: string;
+    name: string;
+  };
   level: string;
   rating: number;
   totalStudents: number;
-  modules: Module[];
+  featured: boolean;
   createdAt: string;
   updatedAt: string;
-  videoUrl?: string;
-  duration?: string;
-  lessonsCount?: number;
-  studentsCount?: number;
-  featured?: boolean;
+  modules?: Module[];
 }
 
 export interface Module {
-  id: string;
+  _id: string;
   title: string;
   lessons: Lesson[];
 }
 
 export interface Lesson {
-  id: string;
+  _id: string;
   title: string;
-  description: string;
+  description?: string;
   duration: string;
   videoUrl: string;
 }

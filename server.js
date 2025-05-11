@@ -11,7 +11,7 @@ dotenv.config();
 
 // Initialize express app
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 5000;
 
 // Security middleware
 app.use(helmet());
@@ -25,18 +25,39 @@ app.use(limiter);
 
 // CORS configuration
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? 'https://your-production-domain.com' 
-    : ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'],
-  credentials: true
+  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175', 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 // Middleware
 app.use(express.json());
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/edutube')
-  .then(() => console.log('MongoDB connected successfully'))
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/edutube', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+  .then(() => {
+    console.log('MongoDB Connected Successfully');
+    console.log('Using database:', mongoose.connection.db.databaseName);
+    // Debug: Check if courses collection exists
+    return mongoose.connection.db.listCollections().toArray();
+  })
+  .then(collections => {
+    console.log('Available collections:', collections.map(c => c.name));
+    // Debug: Get count of courses
+    return mongoose.connection.db.collection('courses').countDocuments();
+  })
+  .then(count => {
+    console.log(`Current number of courses in database: ${count}`);
+    // Debug: List all courses
+    return mongoose.connection.db.collection('courses').find().toArray();
+  })
+  .then(courses => {
+    console.log('Current courses:', courses.map(c => ({ id: c._id, title: c.title })));
+  })
   .catch(err => {
     console.error('MongoDB connection error:', err);
     process.exit(1);

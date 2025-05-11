@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Search, Filter, X } from 'lucide-react';
-import { courses as mockCourses, categories } from '../../data/mockData';
 import CourseCard from '../../components/ui/CourseCard';
 import { Course } from '../../types';
 
@@ -13,252 +12,125 @@ const CoursesPage: React.FC = () => {
   const [selectedLevel, setSelectedLevel] = useState('');
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   
   const location = useLocation();
   const navigate = useNavigate();
   
-  // Load courses from localStorage or API
+  // Fetch courses from API
   useEffect(() => {
-    const loadCourses = async () => {
-      setIsLoading(true);
+    const fetchCourses = async () => {
       try {
-        // Try to get courses from localStorage first (these are courses added in admin dashboard)
-        const storedCourses = localStorage.getItem('adminCourses');
-        let coursesData: Course[] = [];
-        
-        if (storedCourses) {
-          const parsedCourses = JSON.parse(storedCourses);
-          // Map admin courses to match the expected Course type format
-          coursesData = parsedCourses.map((course: any) => ({
-            id: course._id,
-            title: course.title,
-            description: course.description || '',
-            instructor: course.instructor || 'Unknown Instructor',
-            thumbnail: course.thumbnail || 'https://via.placeholder.com/640x360?text=No+Image',
-            category: course.category?.name || 'Uncategorized',
-            level: course.level || 'beginner',
-            rating: course.rating || 4.5,
-            duration: '3h 15m',
-            studentsCount: course.totalStudents || 0,
-            lessonsCount: 12,
-            videoUrl: course.videoUrl || null
-          }));
+        setIsLoading(true);
+        const response = await fetch('http://localhost:5000/api/courses');
+        if (!response.ok) {
+          throw new Error('Failed to fetch courses');
         }
-        
-        // If no courses in localStorage or there's very few, also include mock courses
-        if (coursesData.length < 3) {
-          // Combine with mock courses, but avoid duplicates by id
-          const existingIds = new Set(coursesData.map(c => c.id));
-          const additionalMockCourses = mockCourses.filter(c => !existingIds.has(c.id));
-          coursesData = [...coursesData, ...additionalMockCourses];
-        }
-        
-        setAllCourses(coursesData);
-        setFilteredCourses(coursesData);
-      } catch (error) {
-        console.error('Error loading courses:', error);
-        // Fallback to mock data if there's an error
-        setAllCourses(mockCourses);
-        setFilteredCourses(mockCourses);
+        const data = await response.json();
+        setAllCourses(data);
+        setFilteredCourses(data);
+      } catch (err) {
+        console.error('Error fetching courses:', err);
+        setError('Failed to load courses. Please try again later.');
       } finally {
         setIsLoading(false);
       }
     };
     
-    loadCourses();
+    fetchCourses();
   }, []);
   
-  // Apply URL parameters for filtering
+  // Filter courses based on search query and filters
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    const searchParam = params.get('search');
-    const categoryParam = params.get('category');
-    
-    if (searchParam) {
-      setSearchQuery(searchParam);
-    }
-    
-    if (categoryParam) {
-      setSelectedCategory(categoryParam);
-    }
-    
-    if (allCourses.length > 0) {
-      applyFilters(searchParam || searchQuery, categoryParam || selectedCategory, selectedLevel);
-    }
-  }, [location.search, allCourses]);
+    let filtered = [...allCourses];
   
-  const applyFilters = (search: string, category: string, level: string) => {
-    let result = [...allCourses];
-    
-    if (search) {
-      result = result.filter(course => 
-        course.title.toLowerCase().includes(search.toLowerCase()) ||
-        (course.description && course.description.toLowerCase().includes(search.toLowerCase()))
+    if (searchQuery) {
+      filtered = filtered.filter(course =>
+        course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        course.description.toLowerCase().includes(searchQuery.toLowerCase())
       );
     }
     
-    if (category) {
-      result = result.filter(course => course.category === category);
+    if (selectedCategory) {
+      filtered = filtered.filter(course =>
+        course.category.name.toLowerCase() === selectedCategory.toLowerCase()
+      );
     }
     
-    if (level) {
-      result = result.filter(course => course.level === level);
+    if (selectedLevel) {
+      filtered = filtered.filter(course =>
+        course.level.toLowerCase() === selectedLevel.toLowerCase()
+      );
     }
-    
-    setFilteredCourses(result);
-  };
-  
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    applyFilters(searchQuery, selectedCategory, selectedLevel);
-    
-    // Update URL
-    const params = new URLSearchParams();
-    if (searchQuery) params.set('search', searchQuery);
-    if (selectedCategory) params.set('category', selectedCategory);
-    navigate(`/courses?${params.toString()}`);
-  };
-  
-  const handleCategoryChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedCategory(e.target.value);
-  };
-  
-  const handleLevelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setSelectedLevel(e.target.value);
-  };
+
+    setFilteredCourses(filtered);
+  }, [searchQuery, selectedCategory, selectedLevel, allCourses]);
   
   const clearFilters = () => {
     setSearchQuery('');
     setSelectedCategory('');
     setSelectedLevel('');
-    setFilteredCourses(allCourses);
-    navigate('/courses');
-  };
-
-  const toggleFilters = () => {
-    setIsFilterOpen(!isFilterOpen);
   };
   
   return (
-    <div className="min-h-screen bg-gray-50 py-10">
+    <div className="min-h-screen bg-gray-50 py-8">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">Browse All Courses</h1>
-          <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-            Discover our collection of organized YouTube tutorials across different categories
-          </p>
-        </div>
-        
-        <div className="flex flex-col md:flex-row justify-between mb-8 gap-4">
-          <form onSubmit={handleSearch} className="flex-1 max-w-xl">
+        {/* Search and Filter Section */}
+        <div className="mb-8">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1">
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-5 w-5 text-gray-400" />
-              </div>
               <input
                 type="text"
-                placeholder="Search for courses..."
-                className="input pl-10 w-full"
+                  placeholder="Search courses..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-              />
-              <button 
-                type="submit"
-                className="absolute inset-y-0 right-0 pr-3 flex items-center"
-              >
-                <span className="px-3 py-1 bg-primary-100 text-primary-800 text-xs font-medium rounded-md hidden sm:block">
-                  Enter
-                </span>
-              </button>
+                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                />
+                <Search className="absolute left-3 top-2.5 h-5 w-5 text-gray-400" />
+              </div>
             </div>
-          </form>
-          
-          <div className="flex space-x-4">
             <button 
-              className="btn btn-outline flex items-center md:hidden"
-              onClick={toggleFilters}
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
             >
-              <Filter className="h-4 w-4 mr-2" />
+              <Filter className="h-5 w-5 mr-2" />
               Filters
             </button>
-            
-            <div className="hidden md:flex space-x-4">
-              <select
-                className="input"
-                value={selectedCategory}
-                onChange={handleCategoryChange}
-              >
-                <option value="">All Categories</option>
-                {categories.map(category => (
-                  <option key={category.id} value={category.name}>
-                    {category.name}
-                  </option>
-                ))}
-              </select>
-              
-              <select
-                className="input"
-                value={selectedLevel}
-                onChange={handleLevelChange}
-              >
-                <option value="">All Levels</option>
-                <option value="beginner">Beginner</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="advanced">Advanced</option>
-              </select>
-              
-              <button 
-                className="btn btn-primary"
-                onClick={handleSearch}
-              >
-                Apply Filters
-              </button>
-              
-              {(searchQuery || selectedCategory || selectedLevel) && (
-                <button 
-                  className="btn btn-outline flex items-center"
-                  onClick={clearFilters}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Clear
-                </button>
-              )}
-            </div>
-          </div>
         </div>
         
-        {/* Mobile Filters */}
+          {/* Filter Panel */}
         {isFilterOpen && (
-          <div className="bg-white p-4 rounded-lg shadow-md mb-6 md:hidden">
-            <div className="space-y-4">
+            <div className="mt-4 p-4 bg-white rounded-lg shadow-sm border border-gray-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="mobileCategory" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                   Category
                 </label>
                 <select
-                  id="mobileCategory"
-                  className="input w-full"
                   value={selectedCategory}
-                  onChange={handleCategoryChange}
+                    onChange={(e) => setSelectedCategory(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
                 >
                   <option value="">All Categories</option>
-                  {categories.map(category => (
-                    <option key={category.id} value={category.name}>
-                      {category.name}
-                    </option>
-                  ))}
+                    <option value="web-dev">Web Development</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="react">React</option>
+                    <option value="mobile-dev">Mobile Development</option>
+                    <option value="data-science">Data Science</option>
+                    <option value="machine-learning">Machine Learning</option>
+                    <option value="design">Design</option>
+                    <option value="devops">DevOps</option>
                 </select>
               </div>
-              
               <div>
-                <label htmlFor="mobileLevel" className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                   Level
                 </label>
                 <select
-                  id="mobileLevel"
-                  className="input w-full"
                   value={selectedLevel}
-                  onChange={handleLevelChange}
+                    onChange={(e) => setSelectedLevel(e.target.value)}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2"
                 >
                   <option value="">All Levels</option>
                   <option value="beginner">Beginner</option>
@@ -266,68 +138,37 @@ const CoursesPage: React.FC = () => {
                   <option value="advanced">Advanced</option>
                 </select>
               </div>
-              
-              <div className="flex space-x-3">
-                <button 
-                  className="btn btn-primary flex-1"
-                  onClick={handleSearch}
-                >
-                  Apply Filters
-                </button>
-                
-                {(searchQuery || selectedCategory || selectedLevel) && (
-                  <button 
-                    className="btn btn-outline flex items-center"
-                    onClick={clearFilters}
-                  >
-                    <X className="h-4 w-4 mr-2" />
-                    Clear
-                  </button>
-                )}
               </div>
-            </div>
-          </div>
-        )}
-        
-        {/* Filter summary */}
-        {(searchQuery || selectedCategory || selectedLevel) && (
-          <div className="bg-white px-4 py-3 rounded-lg shadow-sm mb-6 flex flex-wrap items-center">
-            <span className="text-gray-700 mr-3">Active filters:</span>
-            {searchQuery && (
-              <span className="badge badge-primary m-1 px-3 py-1">
-                Search: {searchQuery}
-              </span>
-            )}
-            {selectedCategory && (
-              <span className="badge badge-secondary m-1 px-3 py-1">
-                Category: {selectedCategory}
-              </span>
-            )}
-            {selectedLevel && (
-              <span className="badge badge-accent m-1 px-3 py-1">
-                Level: {selectedLevel}
-              </span>
+              {(selectedCategory || selectedLevel) && (
+                <div className="mt-4 flex justify-end">
+                  <button 
+                    onClick={clearFilters}
+                    className="flex items-center text-sm text-gray-600 hover:text-gray-900"
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Clear filters
+                  </button>
+              </div>
             )}
           </div>
         )}
-        
-        {/* Results */}
-        <div className="mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">
-            {filteredCourses.length} {filteredCourses.length === 1 ? 'Course' : 'Courses'} Found
-          </h2>
         </div>
         
+        {/* Courses Grid */}
         {isLoading ? (
           <div className="text-center">
             <div className="spinner-border animate-spin inline-block w-8 h-8 border-4 rounded-full text-gray-600" role="status">
               <span className="sr-only">Loading...</span>
             </div>
           </div>
+        ) : error ? (
+          <div className="text-center text-red-600">
+            {error}
+          </div>
         ) : filteredCourses.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
             {filteredCourses.map(course => (
-              <CourseCard key={course.id} course={course} />
+              <CourseCard key={course._id} course={course} />
             ))}
           </div>
         ) : (

@@ -9,8 +9,14 @@ const Category = require('../models/Category');
 dotenv.config();
 
 // Connect to MongoDB
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/edutube')
-  .then(() => console.log('MongoDB connected successfully for seeding'))
+mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/edutube', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+  .then(() => {
+    console.log('MongoDB connected successfully for seeding');
+    console.log('Database name:', mongoose.connection.db.databaseName);
+  })
   .catch(err => {
     console.error('MongoDB connection error:', err);
     process.exit(1);
@@ -20,6 +26,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/edutube')
 const seedDatabase = async () => {
   try {
     // Clear existing data
+    console.log('Clearing existing data...');
     await User.deleteMany({});
     await Course.deleteMany({});
     await Category.deleteMany({});
@@ -27,6 +34,7 @@ const seedDatabase = async () => {
     console.log('Data cleared successfully');
 
     // Create admin and test user
+    console.log('Creating users...');
     const salt = await bcrypt.genSalt(10);
     const adminPassword = await bcrypt.hash('admin123', salt);
     const userPassword = await bcrypt.hash('user123', salt);
@@ -47,9 +55,10 @@ const seedDatabase = async () => {
       createdAt: new Date()
     });
 
-    console.log('Users created successfully');
+    console.log('Users created successfully:', { admin: admin._id, testUser: testUser._id });
 
     // Create categories
+    console.log('Creating categories...');
     const webDevCategory = await Category.create({
       name: 'Web Development',
       icon: 'code',
@@ -74,9 +83,15 @@ const seedDatabase = async () => {
       count: 0
     });
 
-    console.log('Categories created successfully');
+    console.log('Categories created successfully:', {
+      webDev: webDevCategory._id,
+      dataScience: dataScience._id,
+      mobileDev: mobileDev._id,
+      design: design._id
+    });
 
     // Create courses
+    console.log('Creating courses...');
     const reactCourse = await Course.create({
       title: 'React Masterclass',
       description: 'Learn React from beginner to advanced level with practical projects',
@@ -121,6 +136,8 @@ const seedDatabase = async () => {
       ]
     });
 
+    console.log('React course created successfully:', reactCourse._id);
+
     const pythonCourse = await Course.create({
       title: 'Python for Data Science',
       description: 'Learn Python programming for data analysis and visualization',
@@ -154,6 +171,8 @@ const seedDatabase = async () => {
       ]
     });
 
+    console.log('Python course created successfully:', pythonCourse._id);
+
     const flutterCourse = await Course.create({
       title: 'Flutter App Development',
       description: 'Create beautiful mobile apps with Flutter framework',
@@ -181,15 +200,27 @@ const seedDatabase = async () => {
       ]
     });
 
-    console.log('Courses created successfully');
+    console.log('Flutter course created successfully:', flutterCourse._id);
 
     // Update category counts
+    console.log('Updating category counts...');
     await Category.findByIdAndUpdate(webDevCategory._id, { count: 1 });
     await Category.findByIdAndUpdate(dataScience._id, { count: 1 });
     await Category.findByIdAndUpdate(mobileDev._id, { count: 1 });
 
     console.log('Categories updated successfully');
     console.log('Database seeded successfully!');
+    
+    // Verify the data was created
+    const finalUsers = await User.find().select('-password');
+    const finalCourses = await Course.find();
+    const finalCategories = await Category.find();
+    
+    console.log('\nFinal Database State:');
+    console.log('Users:', finalUsers.length);
+    console.log('Courses:', finalCourses.length);
+    console.log('Categories:', finalCategories.length);
+    
     process.exit(0);
   } catch (err) {
     console.error('Error seeding database:', err);

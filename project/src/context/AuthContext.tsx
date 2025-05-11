@@ -17,12 +17,25 @@ interface AuthResponse {
 
 // Set the correct API URL to the backend server port (5000)
 const API_URL = 'http://localhost:5000/api';
-// Flag to use mock auth when backend is unavailable
-const USE_MOCK_AUTH = true; // Set to true to use mock auth when backend is unavailable
 
-// Admin credentials
-const ADMIN_EMAIL = 'kishan05anand@gmail.com';
-const ADMIN_PASSWORD = 'Ki@7259107113';
+// Create a custom fetch function that automatically adds the auth token
+const authFetch = async (url: string, options: RequestInit = {}) => {
+  const token = localStorage.getItem('token');
+  const headers = {
+    ...options.headers,
+    'Content-Type': 'application/json',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+
+  return fetch(url, {
+    ...options,
+    headers
+  });
+};
+
+// Admin credentials - these should be removed and handled by the backend
+// const ADMIN_EMAIL = 'kishan05anand@gmail.com';
+// const ADMIN_PASSWORD = 'Ki@7259107113';
 
 // Password validation utility function
 export const validatePassword = (password: string): { valid: boolean; issues: string[] } => {
@@ -81,62 +94,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string, role: 'user' | 'admin') => {
     setIsLoading(true);
     try {
-      if (USE_MOCK_AUTH) {
-        // For admin authentication, check against specific admin credentials
-        if (role === 'admin') {
-          if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-            throw new Error('Invalid admin credentials. Access denied.');
-          }
-          
-          // Admin authentication successful
-          console.log('Admin authentication successful');
-          const mockAdminUser: User = {
-            id: 'admin-user-id',
-            name: 'Administrator',
-            email: ADMIN_EMAIL,
-            role: 'admin',
-            createdAt: new Date().toISOString()
-          };
-          
-          // Simulate API delay
-          await new Promise(resolve => setTimeout(resolve, 500));
-          
-          // Store mock data
-          localStorage.setItem('token', 'mock-jwt-token-admin');
-          localStorage.setItem('user', JSON.stringify(mockAdminUser));
-          
-          setUser(mockAdminUser);
-          return;
-        }
-        
-        // For user role or if role is not specified, use regular mock authentication
-        console.log('Using mock auth for login:', email, 'as', role);
-        const mockUser: User = {
-          id: 'mock-user-id',
-          name: email.split('@')[0],
-          email,
-          role: role, // Use the role parameter
-          createdAt: new Date().toISOString()
-        };
-        
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Store mock data
-        localStorage.setItem('token', 'mock-jwt-token');
-        localStorage.setItem('user', JSON.stringify(mockUser));
-        
-        setUser(mockUser);
-        return;
-      }
-      
-      // If not using mock auth, use real API
-      const response = await fetch(`${API_URL}/users/login`, {
+      const response = await authFetch(`${API_URL}/users/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email, password, role }) // Include role in the request
+        body: JSON.stringify({ email, password })
       });
       
       if (!response.ok) {
@@ -158,26 +118,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(data.user);
     } catch (error) {
       console.error('Login failed:', error);
-      
-      if (!USE_MOCK_AUTH) {
         throw error;
-      } else if (role === 'admin') {
-        // For admin, always throw the error - don't create mock admin for invalid credentials
-        throw error;
-      } else {
-        // If error occurs but mock auth is enabled and not trying to login as admin,
-        // still create a mock user
-        const mockUser: User = {
-          id: 'mock-user-id',
-          name: email.split('@')[0],
-          email,
-          role: role, // Use the role parameter
-          createdAt: new Date().toISOString()
-        };
-        localStorage.setItem('token', 'mock-jwt-token');
-        localStorage.setItem('user', JSON.stringify(mockUser));
-        setUser(mockUser);
-      }
     } finally {
       setIsLoading(false);
     }
@@ -192,77 +133,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         throw new Error(`Password doesn't meet security requirements: ${passwordValidation.issues[0]}`);
       }
       
-      // If trying to register as admin with the special email address, enforce password policy
-      if (role === 'admin' && email === ADMIN_EMAIL && password !== ADMIN_PASSWORD) {
-        throw new Error('Cannot register with this admin email. Please use a different email.');
-      }
-      
-      if (USE_MOCK_AUTH) {
-        // Mock successful registration (for testing without backend)
-        console.log('Using mock auth for registration:', { name, email, role });
-        
-        // For admin registration, use specific naming
-        const mockUser: User = {
-          id: role === 'admin' ? 'admin-user-id' : `user-${Date.now()}`,
-          name: role === 'admin' ? 'Administrator' : name,
-          email,
-          role: role, // Use the role parameter (defaults to 'user')
-          createdAt: new Date().toISOString()
-        };
-        
-        // Additional fields for admin dashboard (will be stored in localStorage)
-        const mockUserExtended = {
-          ...mockUser,
-          _id: `user-${Date.now()}`,
-          status: 'active',
-          lastLogin: new Date().toISOString(),
-        };
-        
-        // Simulate API delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Store mock data
-        localStorage.setItem('token', role === 'admin' ? 'mock-jwt-token-admin' : 'mock-jwt-token');
-        localStorage.setItem('user', JSON.stringify(mockUser));
-        
-        // Save user to mockUsers list in localStorage for admin dashboard
-        const existingUsers = localStorage.getItem('mockUsers') || '[]';
-        let users = [];
-        try {
-          users = JSON.parse(existingUsers);
-        } catch (e) {
-          console.error('Error parsing mockUsers:', e);
-        }
-        
-        // Make sure we don't add duplicates
-        const userExists = users.some((u: any) => u.email === email);
-        if (!userExists) {
-          users.push(mockUserExtended);
-          localStorage.setItem('mockUsers', JSON.stringify(users));
-        }
-        
-        setUser(mockUser);
-        return;
-      }
-      
-      // For troubleshooting, log the request
-      console.log('Registration request:', { name, email, password: '***', role });
-      console.log('API URL:', `${API_URL}/users/register`);
-      
-      const response = await fetch(`${API_URL}/users/register`, {
+      const response = await authFetch(`${API_URL}/users/register`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ name, email, password, role }) // Include role in the request
+        body: JSON.stringify({ name, email, password, role })
       });
-      
-      // Log response status for debugging
-      console.log('Registration response status:', response.status);
       
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('Registration error data:', errorData);
         throw new Error(errorData.msg || 'Registration failed');
       }
       
@@ -275,22 +152,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(data.user);
     } catch (error) {
       console.error('Registration failed:', error);
-      
-      if (!USE_MOCK_AUTH || (role === 'admin' && email === ADMIN_EMAIL)) {
         throw error;
-      } else {
-        // If error occurs but mock auth is enabled, still create a mock user
-        const mockUser: User = {
-          id: 'mock-user-id',
-          name,
-          email,
-          role: role, // Use the role parameter (defaults to 'user')
-          createdAt: new Date().toISOString()
-        };
-        localStorage.setItem('token', 'mock-jwt-token');
-        localStorage.setItem('user', JSON.stringify(mockUser));
-        setUser(mockUser);
-      }
     } finally {
       setIsLoading(false);
     }
@@ -326,3 +188,6 @@ export const useAuth = () => {
   }
   return context;
 };
+
+// Export the authFetch function for use in other components
+export { authFetch };

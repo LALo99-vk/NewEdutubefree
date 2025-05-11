@@ -6,7 +6,7 @@ import {
   Search
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../context/AuthContext';
+import { useAuth, authFetch } from '../../context/AuthContext';
 import ProgressBar from '../../components/ui/ProgressBar';
 
 // Interface definitions
@@ -27,6 +27,7 @@ interface Course {
   featured: boolean;
   createdAt: string;
   updatedAt: string;
+  duration?: string;  // Add duration as an optional property
   modules: Array<{
     _id: string;
     title: string;
@@ -173,12 +174,8 @@ const AdminDashboard: React.FC = () => {
       
       // Try to update in the API
       try {
-        const response = await fetch(`http://localhost:8080/api/users/${userId}`, {
+        const response = await authFetch(`http://localhost:5000/api/users/${userId}`, {
           method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
-          },
           body: JSON.stringify({ status: newStatus }),
         });
         
@@ -240,163 +237,33 @@ const AdminDashboard: React.FC = () => {
     }
   }, [users, courses]);
 
-  // Load admin dashboard data
+  // Fetch data on component mount
   useEffect(() => {
     const fetchData = async () => {
-      try {
         setIsLoading(true);
-        
-        // Get courses from localStorage first if they exist
-        const storedCourses = localStorage.getItem('adminCourses');
-        let localCourses = [];
-        if (storedCourses) {
-          try {
-            localCourses = JSON.parse(storedCourses);
-          } catch (e) {
-            console.error('Error parsing stored courses:', e);
-          }
-        }
-        
-        // Fetch courses from API
-        try {
-          const [coursesRes, usersRes, categoriesRes] = await Promise.all([
-            fetch('http://localhost:8080/api/courses'),
-            fetch('http://localhost:8080/api/users'),
-            fetch('http://localhost:8080/api/categories'),
-          ]);
-          
-          if (!coursesRes.ok || !usersRes.ok || !categoriesRes.ok) {
-            throw new Error('Failed to fetch data');
-          }
-          
-          const [coursesData, usersData, categoriesData] = await Promise.all([
-            coursesRes.json(),
-            usersRes.json(),
-            categoriesRes.json(),
-          ]);
-          
-          // Merge API courses with any locally added ones that aren't in the API response
-          if (localCourses.length > 0) {
-            // Get all course IDs from API response
-            const apiCourseIds = coursesData.map((c: Course) => c._id);
-            
-            // Filter local courses to only include those not in the API response
-            const localOnlyCourses = localCourses.filter((c: Course) => {
-              return !apiCourseIds.includes(c._id);
-            });
-            
-            // Combine API courses with local-only courses
-            const mergedCourses = [...coursesData, ...localOnlyCourses];
-            setCourses(mergedCourses);
-          } else {
+      setError('');
+      
+      try {
+        // Fetch courses
+        const coursesResponse = await authFetch('http://localhost:5000/api/courses');
+        if (!coursesResponse.ok) throw new Error('Failed to fetch courses');
+        const coursesData = await coursesResponse.json();
             setCourses(coursesData);
-          }
           
+        // Fetch users
+        const usersResponse = await authFetch('http://localhost:5000/api/users');
+        if (!usersResponse.ok) throw new Error('Failed to fetch users');
+        const usersData = await usersResponse.json();
           setUsers(usersData);
           
-          // If categories API fails or returns empty, use default categories
-          if (!categoriesData || categoriesData.length === 0) {
-            const defaultCategories = [
-              { _id: 'web-dev', name: 'Web Development', icon: '💻', count: 10 },
-              { _id: 'javascript', name: 'JavaScript', icon: '🧩', count: 5 },
-              { _id: 'react', name: 'React', icon: '⚛️', count: 8 },
-              { _id: 'mobile-dev', name: 'Mobile Development', icon: '📱', count: 6 },
-              { _id: 'data-science', name: 'Data Science', icon: '📊', count: 7 },
-              { _id: 'machine-learning', name: 'Machine Learning', icon: '🤖', count: 4 },
-              { _id: 'design', name: 'Design', icon: '🎨', count: 3 },
-              { _id: 'devops', name: 'DevOps', icon: '🔄', count: 2 }
-            ];
-            setCategories(defaultCategories);
-          } else {
+        // Fetch categories
+        const categoriesResponse = await authFetch('http://localhost:5000/api/categories');
+        if (!categoriesResponse.ok) throw new Error('Failed to fetch categories');
+        const categoriesData = await categoriesResponse.json();
             setCategories(categoriesData);
-          }
-        } catch (error) {
-          console.error('Error fetching from API:', error);
-          setError(error instanceof Error ? error.message : 'An unknown error occurred');
-          
-          // Use localStorage courses if available, otherwise use mock data
-          if (localCourses.length > 0) {
-            setCourses(localCourses);
-          } else {
-            setCourses(MOCK_COURSES);
-          }
-          
-          // Get registered users from localStorage
-          const registeredUsers = localStorage.getItem('mockUsers');
-          if (registeredUsers) {
-            try {
-              const parsedUsers = JSON.parse(registeredUsers);
-              // Add status and lastLogin attributes if they don't exist
-              const formattedUsers = parsedUsers.map((user: any) => ({
-                ...user,
-                _id: user._id || `user-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                status: user.status || 'active',
-                lastLogin: user.lastLogin || new Date().toISOString(),
-                role: user.role || 'student',
-                enrolledCourses: user.enrolledCourses || []
-              }));
-              setUsers(formattedUsers);
-            } catch (e) {
-              console.error('Error parsing registered users:', e);
-              setUsers([]);
-            }
-          } else {
-            // If no registered users found, don't use mock data - show empty state
-            setUsers([]);
-          }
-          
-          // Set default categories if error occurs
-          const defaultCategories = [
-            { _id: 'web-dev', name: 'Web Development', icon: '💻', count: 10 },
-            { _id: 'javascript', name: 'JavaScript', icon: '🧩', count: 5 },
-            { _id: 'react', name: 'React', icon: '⚛️', count: 8 },
-            { _id: 'mobile-dev', name: 'Mobile Development', icon: '📱', count: 6 },
-            { _id: 'data-science', name: 'Data Science', icon: '📊', count: 7 },
-            { _id: 'machine-learning', name: 'Machine Learning', icon: '🤖', count: 4 },
-            { _id: 'design', name: 'Design', icon: '🎨', count: 3 },
-            { _id: 'devops', name: 'DevOps', icon: '🔄', count: 2 }
-          ];
-          setCategories(defaultCategories);
-        }
       } catch (err) {
-        console.error('Error in overall data fetching:', err);
+        console.error('Error fetching data:', err);
         setError(err instanceof Error ? err.message : 'An unknown error occurred');
-        setCourses(MOCK_COURSES);
-        
-        // Get registered users from localStorage as fallback
-        const registeredUsers = localStorage.getItem('mockUsers');
-        if (registeredUsers) {
-          try {
-            const parsedUsers = JSON.parse(registeredUsers);
-            const formattedUsers = parsedUsers.map((user: any) => ({
-              ...user,
-              _id: user._id || `user-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-              status: user.status || 'active',
-              lastLogin: user.lastLogin || new Date().toISOString(),
-              role: user.role || 'student',
-              enrolledCourses: user.enrolledCourses || []
-            }));
-            setUsers(formattedUsers);
-          } catch (e) {
-            console.error('Error parsing registered users:', e);
-            setUsers([]);
-          }
-        } else {
-          setUsers([]);
-        }
-        
-        // Set default categories if error occurs
-        const defaultCategories = [
-          { _id: 'web-dev', name: 'Web Development', icon: '💻', count: 10 },
-          { _id: 'javascript', name: 'JavaScript', icon: '🧩', count: 5 },
-          { _id: 'react', name: 'React', icon: '⚛️', count: 8 },
-          { _id: 'mobile-dev', name: 'Mobile Development', icon: '📱', count: 6 },
-          { _id: 'data-science', name: 'Data Science', icon: '📊', count: 7 },
-          { _id: 'machine-learning', name: 'Machine Learning', icon: '🤖', count: 4 },
-          { _id: 'design', name: 'Design', icon: '🎨', count: 3 },
-          { _id: 'devops', name: 'DevOps', icon: '🔄', count: 2 }
-        ];
-        setCategories(defaultCategories);
       } finally {
         setIsLoading(false);
       }
@@ -417,144 +284,24 @@ const AdminDashboard: React.FC = () => {
     course.category.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Course CRUD operations
-  const handleAddCourse = (newCourseData: Partial<Course>) => {
-    // Create a unique ID with a consistent format that won't conflict with server IDs
-    const courseId = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
-    
-    // Get category from categories list
-    let categoryObj = { _id: '', name: '' };
-    if (newCourseData.category?._id) {
-      const foundCategory = categories.find(c => c._id === newCourseData.category?._id);
-      if (foundCategory) {
-        categoryObj = { _id: foundCategory._id, name: foundCategory.name };
-      } else {
-        // Default to first category if category not found
-        categoryObj = categories.length > 0 ? 
-          { _id: categories[0]._id, name: categories[0].name } : 
-          { _id: 'web-dev', name: 'Web Development' };
-      }
-    }
-    
-    // Collection of real thumbnail images based on category
-    const thumbnailImages: Record<string, string[]> = {
-      'Web Development': [
-        'https://cdn.pixabay.com/photo/2016/11/19/14/00/code-1839406_1280.jpg',
-        'https://cdn.pixabay.com/photo/2019/10/03/12/12/javascript-4523100_1280.jpg',
-        'https://cdn.pixabay.com/photo/2016/12/28/09/36/web-1935737_1280.png',
-        'https://cdn.pixabay.com/photo/2018/05/08/08/44/artificial-intelligence-3382507_1280.jpg'
-      ],
-      'Mobile Development': [
-        'https://cdn.pixabay.com/photo/2017/01/22/12/07/imac-1999636_1280.png',
-        'https://cdn.pixabay.com/photo/2020/01/26/20/14/computer-4795762_1280.jpg',
-        'https://cdn.pixabay.com/photo/2018/01/29/13/03/internet-3116062_1280.jpg',
-        'https://cdn.pixabay.com/photo/2019/04/29/07/04/software-development-4165307_1280.jpg'
-      ],
-      'Data Science': [
-        'https://cdn.pixabay.com/photo/2017/08/30/01/05/milky-way-2695569_1280.jpg',
-        'https://cdn.pixabay.com/photo/2016/10/11/21/43/geometric-1732847_1280.jpg',
-        'https://cdn.pixabay.com/photo/2018/04/11/19/48/data-3311458_1280.png',
-        'https://cdn.pixabay.com/photo/2018/09/18/11/19/artificial-intelligence-3685928_1280.png'
-      ],
-      'Machine Learning': [
-        'https://cdn.pixabay.com/photo/2017/05/10/19/29/robot-2301646_1280.jpg',
-        'https://cdn.pixabay.com/photo/2018/06/07/16/49/virtual-3460451_1280.jpg',
-        'https://cdn.pixabay.com/photo/2020/05/07/04/01/digitization-5140071_1280.jpg',
-        'https://cdn.pixabay.com/photo/2021/11/04/06/27/artificial-intelligence-6767502_1280.jpg'
-      ],
-      'Design': [
-        'https://cdn.pixabay.com/photo/2017/08/10/02/05/tiles-shapes-2617112_1280.jpg',
-        'https://cdn.pixabay.com/photo/2017/01/20/19/53/productivity-1995786_1280.jpg',
-        'https://cdn.pixabay.com/photo/2018/02/23/04/38/laptop-3174729_1280.jpg',
-        'https://cdn.pixabay.com/photo/2016/11/29/08/41/apple-1868496_1280.jpg'
-      ],
-      'DevOps': [
-        'https://cdn.pixabay.com/photo/2016/11/27/21/42/stock-1863880_1280.jpg',
-        'https://cdn.pixabay.com/photo/2018/02/15/10/35/server-3155000_1280.jpg',
-        'https://cdn.pixabay.com/photo/2016/11/30/20/58/programming-1873854_1280.png',
-        'https://cdn.pixabay.com/photo/2018/08/10/15/45/woman-3597101_1280.jpg'
-      ],
-      'JavaScript': [
-        'https://cdn.pixabay.com/photo/2019/10/03/12/12/javascript-4523100_1280.jpg',
-        'https://cdn.pixabay.com/photo/2015/10/02/15/09/javascript-968983_1280.jpg',
-        'https://cdn.pixabay.com/photo/2018/04/20/21/10/code-3337044_1280.jpg',
-        'https://cdn.pixabay.com/photo/2015/12/04/14/05/code-1076536_1280.jpg'
-      ],
-      'React': [
-        'https://cdn.pixabay.com/photo/2017/12/12/12/44/programming-3014296_1280.jpg',
-        'https://cdn.pixabay.com/photo/2016/11/30/20/58/programming-1873854_1280.png',
-        'https://cdn.pixabay.com/photo/2015/09/17/17/25/code-944499_1280.jpg',
-        'https://cdn.pixabay.com/photo/2018/05/08/08/46/artificial-intelligence-3382509_1280.jpg'
-      ]
-    };
-    
-    // Make sure we have a proper thumbnail
-    if (!newCourseData.thumbnail || newCourseData.thumbnail === '' || newCourseData.thumbnail.includes('placeholder')) {
-      // Get category name or use fallback
-      const categoryName = categoryObj.name || 'Web Development';
+  // Handle adding a new course
+  const handleAddCourse = async (newCourseData: Partial<Course>) => {
+    try {
+      const response = await authFetch('http://localhost:5000/api/courses', {
+        method: 'POST',
+        body: JSON.stringify(newCourseData),
+      });
       
-      // Find images for this category or use web development as fallback
-      const categoryImages = thumbnailImages[categoryName] || thumbnailImages['Web Development'];
-      
-      // Pick a random image from the category
-      const randomIndex = Math.floor(Math.random() * categoryImages.length);
-      newCourseData.thumbnail = categoryImages[randomIndex];
-    }
-    
-    // Ensure course has all required fields
-    const courseToAdd = {
-      ...newCourseData,
-      _id: courseId,
-      totalStudents: newCourseData.totalStudents || 0,
-      rating: newCourseData.rating || 4.5,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      category: categoryObj
-    };
-    
-    // Optimistically update the UI
-    setCourses(prevCourses => [...prevCourses, courseToAdd]);
-    
-    // Save to localStorage
-    const storedCourses = localStorage.getItem('adminCourses');
-    const parsedCourses = storedCourses ? JSON.parse(storedCourses) : [];
-    localStorage.setItem('adminCourses', JSON.stringify([...parsedCourses, courseToAdd]));
-    
-    // Try to add to API as well
-    fetch('http://localhost:8080/api/courses', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      },
-      body: JSON.stringify(courseToAdd),
-    })
-    .then(response => {
-      if (!response.ok) throw new Error('Failed to add course');
-      return response.json();
-    })
-    .then(data => {
-      console.log('Course added successfully:', data);
-      // Update the course with the server-provided ID if available
-      if (data._id && data._id !== courseId) {
-        setCourses(prevCourses => 
-          prevCourses.map(c => c._id === courseId ? { ...c, _id: data._id } : c)
-        );
-        
-        // Update in localStorage
-        const storedCourses = localStorage.getItem('adminCourses');
-        const parsedCourses = storedCourses ? JSON.parse(storedCourses) : [];
-        const updatedCourses = parsedCourses.map((c: any) => 
-          c._id === courseId ? { ...c, _id: data._id } : c
-        );
-        localStorage.setItem('adminCourses', JSON.stringify(updatedCourses));
+      if (!response.ok) {
+        throw new Error('Failed to create course');
       }
-    })
-    .catch(error => {
-      console.error('Error adding course:', error);
-      // Course is still added locally even if API fails
-      setError('Failed to add course to API, but it has been saved locally.');
-    });
+      
+      const createdCourse = await response.json();
+      setCourses(prevCourses => [...prevCourses, createdCourse]);
+    } catch (err) {
+      console.error('Error creating course:', err);
+      setError(err instanceof Error ? err.message : 'An unknown error occurred');
+    }
   };
 
   const handleViewCourse = (course: Course) => {
@@ -567,88 +314,42 @@ const AdminDashboard: React.FC = () => {
     setShowEditModal(true);
   };
 
+  // Handle deleting a course
   const handleDeleteCourse = async (courseId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      
-      // Optimistic update - remove course from UI immediately
-      const updatedCourses = courses.filter(c => c._id !== courseId);
-      setCourses(updatedCourses);
-      
-      // Update localStorage with updated courses list
-      const storedCourses = localStorage.getItem('adminCourses');
-      if (storedCourses) {
-        try {
-          const parsedCourses = JSON.parse(storedCourses);
-          const filteredCourses = parsedCourses.filter((c: any) => c._id !== courseId);
-          localStorage.setItem('adminCourses', JSON.stringify(filteredCourses));
-        } catch (e) {
-          console.error('Error updating localStorage:', e);
-          // Still save the current courses state if parsing failed
-          localStorage.setItem('adminCourses', JSON.stringify(updatedCourses));
-        }
-      } else {
-        localStorage.setItem('adminCourses', JSON.stringify(updatedCourses));
-      }
-      
-      // Close modals and reset state
-      setShowDeleteModal(false);
-      setDeletingCourse(null);
-      
-      // Try to delete from server if we have a token
-      // Note: Local-only courses (added during this session) may not exist on server
-      if (token) {
-        try {
-          const response = await fetch(`http://localhost:8080/api/courses/${courseId}`, {
+      const response = await authFetch(`http://localhost:5000/api/courses/${courseId}`, {
             method: 'DELETE',
-            headers: { 
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
           });
           
-          if (!response.ok && response.status !== 404) {
-            // 404 is expected for local courses, only throw for other errors
-            throw new Error(`Failed to delete course from server: ${response.status}`);
+      if (!response.ok) {
+        throw new Error('Failed to delete course');
           }
-        } catch (error) {
-          console.error('Error deleting from server:', error);
-          // Course is already removed from localStorage - no need to restore
-        }
-      }
+      
+      setCourses(prevCourses => prevCourses.filter(course => course._id !== courseId));
     } catch (err) {
       console.error('Error deleting course:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
     }
   };
 
-  const handleUpdateCourse = (updatedCourse: Course) => {
+  // Handle updating a course
+  const handleUpdateCourse = async (updatedCourse: Course) => {
     try {
-      // Update course locally
-      const updatedCourses = courses.map(course => course._id === updatedCourse._id ? updatedCourse : course);
-      setCourses(updatedCourses);
-      localStorage.setItem('adminCourses', JSON.stringify(updatedCourses));
-      
-      // Update in API
-      fetch(`http://localhost:8080/api/courses/${updatedCourse._id}`, {
+      const response = await authFetch(`http://localhost:5000/api/courses/${updatedCourse._id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-        },
         body: JSON.stringify(updatedCourse),
-      })
-      .then(response => {
-        if (!response.ok) throw new Error('Failed to update course');
-        return response.json();
-      })
-      .then(data => {
-        console.log('Course updated successfully:', data);
-      })
-      .catch(error => {
-        console.error('Error updating course:', error);
-        setError('Failed to update course in API.');
       });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update course');
+      }
+      
+      const updatedCourseData = await response.json();
+      setCourses(prevCourses => 
+        prevCourses.map(course => 
+          course._id === updatedCourse._id ? updatedCourseData : course
+        )
+      );
     } catch (err) {
       console.error('Error updating course:', err);
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
@@ -915,21 +616,22 @@ const AdminDashboard: React.FC = () => {
                       let statusText = 'Never Logged In';
                       
                       if (lastLogin) {
-                        if (daysDifference === 0) {
+                        const daysDiff = daysDifference || 0;
+                        if (daysDiff === 0) {
                           statusColor = 'bg-green-100 text-green-800';
                           statusText = 'Today';
-                        } else if (daysDifference === 1) {
+                        } else if (daysDiff === 1) {
                           statusColor = 'bg-green-100 text-green-800';
                           statusText = 'Yesterday';
-                        } else if (daysDifference && daysDifference < 7) {
+                        } else if (daysDiff < 7) {
                           statusColor = 'bg-blue-100 text-blue-800';
-                          statusText = `${daysDifference} days ago`;
-                        } else if (daysDifference && daysDifference < 30) {
+                          statusText = `${daysDiff} days ago`;
+                        } else if (daysDiff < 30) {
                           statusColor = 'bg-yellow-100 text-yellow-800';
-                          statusText = `${Math.floor(daysDifference / 7)} weeks ago`;
+                          statusText = `${Math.floor(daysDiff / 7)} weeks ago`;
                         } else {
                           statusColor = 'bg-red-100 text-red-800';
-                          statusText = `${Math.floor(daysDifference / 30)} months ago`;
+                          statusText = `${Math.floor(daysDiff / 30)} months ago`;
                         }
                       }
                       
@@ -1438,13 +1140,13 @@ const AdminDashboard: React.FC = () => {
                       title: formData.get('title') as string,
                       description: formData.get('description') as string,
                       instructor: formData.get('instructor') as string,
-                      thumbnail: formData.get('thumbnail') as string,
+                      thumbnail: formData.get('thumbnail') as string || 'https://via.placeholder.com/640x360?text=Course',
                       videoUrl: formData.get('videoUrl') as string,
                       level: formData.get('level') as string,
                       category: {
                         _id: formData.get('category') as string,
-                        name: categories.find(c => c._id === formData.get('category'))?.name || editingCourse.category.name
-                      },
+                        name: formData.get('category') as string
+                      }
                     };
                     
                     handleUpdateCourse(updatedCourse);
@@ -1457,14 +1159,13 @@ const AdminDashboard: React.FC = () => {
                       title: formData.get('title') as string,
                       description: formData.get('description') as string,
                       instructor: formData.get('instructor') as string,
-                      thumbnail: formData.get('thumbnail') as string,
+                      thumbnail: formData.get('thumbnail') as string || 'https://via.placeholder.com/640x360?text=Course',
                       videoUrl: formData.get('videoUrl') as string,
                       level: formData.get('level') as string,
                       category: {
                         _id: formData.get('category') as string,
-                        name: categories.find(c => c._id === formData.get('category'))?.name || ''
-                      },
-                      duration: formData.get('duration') as string || '1h 30m'
+                        name: formData.get('category') as string
+                      }
                     };
                     
                     handleAddCourse(newCourse);
@@ -1528,14 +1229,6 @@ const AdminDashboard: React.FC = () => {
                           required
                         >
                           <option value="">Select category</option>
-                          {categories && categories.length > 0 ? (
-                            categories.map(category => (
-                              <option key={category._id} value={category._id}>
-                                {category.name}
-                              </option>
-                            ))
-                          ) : (
-                            <>
                               <option value="web-dev">Web Development</option>
                               <option value="javascript">JavaScript</option>
                               <option value="react">React</option>
@@ -1544,8 +1237,6 @@ const AdminDashboard: React.FC = () => {
                               <option value="machine-learning">Machine Learning</option>
                               <option value="design">Design</option>
                               <option value="devops">DevOps</option>
-                            </>
-                          )}
                         </select>
                       </div>
                       
@@ -1608,14 +1299,10 @@ const AdminDashboard: React.FC = () => {
                         <div className="max-h-60 overflow-y-auto">
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                             {editingCourse?.category && [
-                              'Web Development',
-                              'Mobile Development',
-                              'Data Science',
-                              'Machine Learning',
-                              'Design',
-                              'DevOps',
-                              'JavaScript',
-                              'React'
+                              'https://cdn.pixabay.com/photo/2016/11/19/14/00/code-1839406_1280.jpg',
+                              'https://cdn.pixabay.com/photo/2019/10/03/12/12/javascript-4523100_1280.jpg',
+                              'https://cdn.pixabay.com/photo/2016/12/28/09/36/web-1935737_1280.png',
+                              'https://cdn.pixabay.com/photo/2018/05/08/08/44/artificial-intelligence-3382507_1280.jpg'
                             ].includes(editingCourse.category.name) ? (
                               // Display category-specific thumbnails
                               [

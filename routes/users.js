@@ -69,34 +69,72 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check for user
+    // Input validation
+    if (!email || !password) {
+      return res.status(400).json({ msg: 'Please provide both email and password' });
+    }
+
+    // Hardcoded admin credentials
+    const DEFAULT_ADMIN_EMAIL = 'admin@example.com';
+    const DEFAULT_ADMIN_PASSWORD = 'admin123';
+
+    // If trying to log in as admin, only allow default admin
+    if (email === DEFAULT_ADMIN_EMAIL) {
+      if (password !== DEFAULT_ADMIN_PASSWORD) {
+        return res.status(400).json({ msg: 'Invalid credentials' });
+      }
+      // Return a fake admin user object
+      const userResponse = {
+        id: 'admin-id',
+        name: 'Admin',
+        email: DEFAULT_ADMIN_EMAIL,
+        role: 'admin',
+        avatar: '',
+        createdAt: new Date()
+      };
+      const payload = {
+        user: {
+          id: userResponse.id,
+          role: userResponse.role
+        }
+      };
+      jwt.sign(
+        payload,
+        process.env.JWT_SECRET || 'your_jwt_secret',
+        { expiresIn: '7d' },
+        (err, token) => {
+          if (err) throw err;
+          res.json({ token, user: userResponse });
+        }
+      );
+      return;
+    }
+    // If trying to log in as admin with any other email, deny access
+    if (req.body.role === 'admin') {
+      return res.status(400).json({ msg: 'Invalid credentials' });
+    }
+
+    // User login (not admin)
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
       return res.status(400).json({ msg: 'Invalid credentials' });
     }
-
-    // Check password
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(400).json({ msg: 'Invalid credentials' });
     }
-
-    // Generate JWT
     const payload = {
       user: {
         id: user.id,
         role: user.role
       }
     };
-
     jwt.sign(
       payload,
       process.env.JWT_SECRET || 'your_jwt_secret',
       { expiresIn: '7d' },
       (err, token) => {
         if (err) throw err;
-        
-        // Return user without password
         const userResponse = {
           id: user.id,
           name: user.name,
@@ -105,13 +143,11 @@ router.post('/login', async (req, res) => {
           avatar: user.avatar,
           createdAt: user.createdAt
         };
-        
         res.json({ token, user: userResponse });
       }
     );
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server error');
+    res.status(500).json({ msg: 'Server error' });
   }
 });
 
