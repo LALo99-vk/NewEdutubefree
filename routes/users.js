@@ -123,6 +123,9 @@ router.post('/login', async (req, res) => {
     if (!isMatch) {
       return res.status(400).json({ msg: 'Invalid credentials' });
     }
+    // Update lastLogin field
+    user.lastLogin = new Date();
+    await user.save();
     const payload = {
       user: {
         id: user.id,

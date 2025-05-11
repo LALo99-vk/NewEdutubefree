@@ -289,8 +289,7 @@ const AdminDashboard: React.FC = () => {
 
   // Filter courses based on search query
   const filteredCourses = courses.filter(course => 
-    course.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    course.category.name.toLowerCase().includes(searchQuery.toLowerCase())
+    course.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // Handle adding a new course
@@ -444,16 +443,6 @@ const AdminDashboard: React.FC = () => {
               Users
             </button>
             <button
-              onClick={() => handleTabChange('progress')}
-              className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
-                activeTab === 'progress'
-                  ? 'border-blue-500 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-              }`}
-            >
-              Progress Tracking
-            </button>
-            <button
               onClick={() => handleTabChange('login')}
               className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'login'
@@ -498,15 +487,6 @@ const AdminDashboard: React.FC = () => {
                       Title
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Category
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Students
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Progress
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Actions
                     </th>
                   </tr>
@@ -538,48 +518,31 @@ const AdminDashboard: React.FC = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                          {course.category?.name || 'Uncategorized'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {course.totalStudents || 0}
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <ProgressBar 
-                          progress={courseProgress[course._id] || 0} 
-                          height={8} 
-                          showPercentage={true}
-                          color={courseProgress[course._id] < 30 ? 'bg-red-500' : 
-                                courseProgress[course._id] < 70 ? 'bg-yellow-500' : 'bg-green-500'}
-                        />
-                      </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                        <div className="flex space-x-2">
+                        <div className="flex space-x-4">
                           <button
                             onClick={() => handleViewCourse(course)}
-                            className="text-blue-600 hover:text-blue-900"
+                            className="text-blue-600 hover:text-blue-900 p-3 rounded-lg text-xl border border-blue-200 hover:bg-blue-50 transition"
                             title="View course details"
                           >
-                            <Eye className="h-5 w-5" />
+                            <Eye className="h-7 w-7" />
                           </button>
                           <button
                             onClick={() => handleEditCourse(course)}
-                            className="text-blue-600 hover:text-blue-900"
+                            className="text-blue-600 hover:text-blue-900 p-3 rounded-lg text-xl border border-blue-200 hover:bg-blue-50 transition"
                             title="Edit course"
                           >
-                            <Edit className="h-5 w-5" />
+                            <Edit className="h-7 w-7" />
                           </button>
                           <button
                             onClick={() => {
                               setDeletingCourse(course);
                               setShowDeleteModal(true);
                             }}
-                            className="text-red-600 hover:text-red-900"
+                            className="text-red-600 hover:text-red-900 p-3 rounded-lg text-xl border border-red-200 hover:bg-red-50 transition"
                             title="Delete course"
                           >
-                            <Trash className="h-5 w-5" />
+                            <Trash className="h-7 w-7" />
                           </button>
                         </div>
                       </td>
@@ -588,7 +551,7 @@ const AdminDashboard: React.FC = () => {
                   
                   {filteredCourses.length === 0 && (
                     <tr>
-                      <td colSpan={5} className="px-6 py-4 text-center text-sm text-gray-500">
+                      <td colSpan={2} className="px-6 py-4 text-center text-sm text-gray-500">
                         {isLoading ? (
                           <div className="flex justify-center">
                             <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
@@ -780,9 +743,6 @@ const AdminDashboard: React.FC = () => {
                       Status
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Last Login
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Courses
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -825,15 +785,6 @@ const AdminDashboard: React.FC = () => {
                             {user.status || 'active'}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          {lastLogin ? (
-                            <div className="text-sm text-gray-900">
-                              {lastLogin.toLocaleDateString()}
-                            </div>
-                          ) : (
-                            <span className="text-sm text-gray-500">Never</span>
-                          )}
-                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {user.enrolledCourses ? user.enrolledCourses.length : 0}
                         </td>
@@ -872,62 +823,6 @@ const AdminDashboard: React.FC = () => {
                   )}
                 </tbody>
               </table>
-            </div>
-          </div>
-        )}
-        
-        {/* Progress Tracking Tab Content */}
-        {activeTab === 'progress' && (
-          <div>
-            <div className="mb-6 flex justify-between">
-              <h2 className="text-xl font-semibold text-gray-800">Course Progress Overview</h2>
-            </div>
-            <div className="bg-white shadow overflow-hidden sm:rounded-lg p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {courses.map(course => {
-                  const progress = courseProgress[course._id] || 0;
-                  return (
-                    <div key={course._id} className="border border-gray-200 rounded-lg p-4">
-                      <div className="flex items-center mb-2">
-                        <div className="w-12 h-12 bg-gray-100 rounded overflow-hidden mr-3">
-                          {course.thumbnail ? (
-                            <img 
-                              src={course.thumbnail} 
-                              alt={course.title} 
-                              className="w-full h-full object-cover"
-                              onError={(e) => {
-                                (e.target as HTMLImageElement).src = 'https://via.placeholder.com/120?text=Course';
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-full flex items-center justify-center bg-gray-200">
-                              <span className="text-xs">No img</span>
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <h3 className="font-medium text-gray-900">{course.title}</h3>
-                          <p className="text-sm text-gray-500">{course.totalStudents || 0} enrolled</p>
-                        </div>
-                      </div>
-                      <div className="mt-2">
-                        <ProgressBar 
-                          progress={progress} 
-                          height={8} 
-                          showPercentage={true}
-                          color={progress < 30 ? 'bg-red-500' : progress < 70 ? 'bg-yellow-500' : 'bg-green-500'}
-                        />
-                      </div>
-                      <div className="mt-2 flex justify-between text-sm">
-                        <span className="text-gray-500">Completion rate</span>
-                        <span className="font-medium text-gray-700">
-                          {progress < 30 ? 'Low' : progress < 70 ? 'Medium' : 'High'}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
             </div>
           </div>
         )}
@@ -1061,6 +956,20 @@ const AdminDashboard: React.FC = () => {
                             </div>
                           ))}
                         </div>
+                      </div>
+                    )}
+                    
+                    {/* PDF Download Option */}
+                    {viewingCourse.studyMaterial && (
+                      <div className="mt-4">
+                        <a
+                          href={viewingCourse.studyMaterial.fileUrl}
+                          download={viewingCourse.studyMaterial.fileName}
+                          className="inline-flex items-center px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition"
+                        >
+                          <FileText className="h-5 w-5 mr-2" />
+                          Download PDF
+                        </a>
                       </div>
                     )}
                     

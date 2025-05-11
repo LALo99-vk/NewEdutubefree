@@ -455,13 +455,6 @@ const CourseDetailPage: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowPdfViewer(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
-                    >
-                      <Eye className="h-4 w-4" />
-                      View PDF
-                    </button>
                     <a
                       href={course.studyMaterial.fileUrl}
                       download
