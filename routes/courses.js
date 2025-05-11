@@ -52,7 +52,7 @@ router.post('/', auth, async (req, res) => {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ msg: 'Access denied' });
     }
-
+    
     const {
       title,
       description,
@@ -62,7 +62,7 @@ router.post('/', auth, async (req, res) => {
       category,
       level
     } = req.body;
-
+    
     // Validate thumbnail URL
     let thumbnailUrl = thumbnail;
     if (!thumbnailUrl || !thumbnailUrl.startsWith('http')) {
@@ -92,7 +92,7 @@ router.post('/', auth, async (req, res) => {
     };
 
     console.log('Creating new course with data:', courseData);
-
+    
     const course = new Course(courseData);
     console.log('Attempting to save course:', course);
 

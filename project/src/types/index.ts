@@ -14,6 +14,11 @@ export interface Course {
   instructor: string;
   thumbnail: string;
   videoUrl?: string;
+  studyMaterial?: {
+    fileName: string;
+    fileUrl: string;
+    uploadedAt: Date;
+  };
   category: {
     _id: string;
     name: string;

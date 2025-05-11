@@ -2,7 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { 
   Play, CheckCircle, Clock, BookOpen, Star, 
-  ChevronRight
+  ChevronRight,
+  Users,
+  Download,
+  FileText
 } from 'lucide-react';
 import { Course, Lesson } from '../../types';
 import VideoPlayer from '../../components/ui/VideoPlayer';
@@ -306,7 +309,7 @@ const CourseDetailPage: React.FC = () => {
               {(currentLesson?.videoUrl || course?.videoUrl) ? (
                 <VideoPlayer
                   videoUrl={currentLesson?.videoUrl || course?.videoUrl || ''}
-                  title={currentLesson?.title || course?.title || ''}
+                    title={currentLesson?.title || course?.title || ''}
                   courseId={course?._id}
                   lessonId={currentLesson?._id}
                   totalLessons={totalLessons}
@@ -334,7 +337,7 @@ const CourseDetailPage: React.FC = () => {
                       moduleId: module._id
                     }))
                   ) || []}
-                />
+                  />
               ) : (
                 <VideoPlaceholder 
                   title="No video available for this lesson" 
@@ -354,6 +357,34 @@ const CourseDetailPage: React.FC = () => {
                 {currentLesson?.duration || '15:20'}
               </div>
             </div>
+
+            {course.studyMaterial && (
+              <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h3 className="text-xl font-semibold mb-4 flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary-600" />
+                  Study Material
+                </h3>
+                <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-8 w-8 text-gray-500" />
+                    <div>
+                      <p className="font-medium text-gray-900">{course.studyMaterial.fileName}</p>
+                      <p className="text-sm text-gray-500">
+                        Uploaded on {new Date(course.studyMaterial.uploadedAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <a
+                    href={course.studyMaterial.fileUrl}
+                    download
+                    className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-md hover:bg-primary-700 transition-colors"
+                  >
+                    <Download className="h-4 w-4" />
+                    Download PDF
+                  </a>
+                </div>
+              </div>
+            )}
           </div>
           
           {/* Right sidebar - Course Content */}

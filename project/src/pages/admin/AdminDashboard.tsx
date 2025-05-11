@@ -3,7 +3,9 @@ import {
   Plus, 
   Edit, Trash,
   Eye, X, Youtube,
-  Search
+  Search,
+  FileText,
+  Upload
 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth, authFetch } from '../../context/AuthContext';
@@ -37,6 +39,11 @@ interface Course {
       duration: string;
     }>;
   }>;
+  studyMaterial?: {
+    fileName: string;
+    fileUrl: string;
+    uploadedAt: Date;
+  };
 }
 
 interface User {
@@ -1146,7 +1153,8 @@ const AdminDashboard: React.FC = () => {
                       category: {
                         _id: formData.get('category') as string,
                         name: formData.get('category') as string
-                      }
+                      },
+                      studyMaterial: editingCourse.studyMaterial
                     };
                     
                     handleUpdateCourse(updatedCourse);
@@ -1165,7 +1173,8 @@ const AdminDashboard: React.FC = () => {
                       category: {
                         _id: formData.get('category') as string,
                         name: formData.get('category') as string
-                      }
+                      },
+                      studyMaterial: undefined
                     };
                     
                     handleAddCourse(newCourse);
@@ -1270,6 +1279,49 @@ const AdminDashboard: React.FC = () => {
                       <p className="text-sm text-gray-500 mt-1">
                         Enter a YouTube video URL for the course preview
                       </p>
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Study Material (PDF)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="file"
+                          name="studyMaterial"
+                          accept=".pdf"
+                          className="hidden"
+                          id="studyMaterial"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              // Here you would typically upload to your storage service
+                              // For now, we'll just store the file name
+                              setEditingCourse(prev => ({
+                                ...prev!,
+                                studyMaterial: {
+                                  fileName: file.name,
+                                  fileUrl: URL.createObjectURL(file),
+                                  uploadedAt: new Date()
+                                }
+                              }));
+                            }
+                          }}
+                        />
+                        <label
+                          htmlFor="studyMaterial"
+                          className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-md cursor-pointer"
+                        >
+                          <Upload className="h-4 w-4" />
+                          Upload PDF
+                        </label>
+                        {editingCourse?.studyMaterial && (
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <FileText className="h-4 w-4" />
+                            {editingCourse.studyMaterial.fileName}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     
                     <div>

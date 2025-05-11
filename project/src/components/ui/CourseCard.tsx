@@ -14,7 +14,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
   const { isAuthenticated } = useAuth();
   const [courseProgress, setCourseProgress] = useState(0);
   const [lastCheckpoint, setLastCheckpoint] = useState<string | null>(null);
-
+  
   // Calculate total lessons for progress calculation
   const totalLessons = course.modules ? 
     course.modules.reduce((sum, module) => sum + module.lessons.length, 0) : 0;
@@ -64,7 +64,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
       const currentTime = new Date().toISOString();
       localStorage.setItem(checkpointKey, currentTime);
       setLastCheckpoint(currentTime);
-    }
+        }
   };
 
   // Handle card click based on authentication status
@@ -89,7 +89,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
       <div className="relative">
         <img 
           src={course.thumbnail || `https://placehold.co/640x360/2563eb/ffffff?text=${encodeURIComponent(course.title)}`}
-          alt={course.title}
+          alt={course.title} 
           className="w-full h-48 object-cover"
           onError={(e) => {
             e.currentTarget.src = `https://placehold.co/640x360/2563eb/ffffff?text=${encodeURIComponent(course.title)}`;
@@ -109,7 +109,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course }) => {
               <span>{courseProgress}%</span>
             </div>
             <div className="h-1 bg-gray-600 rounded-full">
-              <div 
+            <div 
                 className={`h-full rounded-full transition-all duration-300 ${
                   courseProgress < 30 ? 'bg-red-500' : 
                   courseProgress < 70 ? 'bg-yellow-500' : 

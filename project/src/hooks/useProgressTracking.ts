@@ -124,11 +124,11 @@ export const useProgressTracking = (
         ...progressData.watchProgress,
         [lessonId]: percentage
       };
-      
+        
       // Auto-complete lesson if watched enough
       if (percentage >= 90 && !progressData.completedLessons.includes(lessonId)) {
-        progressData.completedLessons.push(lessonId);
-      }
+          progressData.completedLessons.push(lessonId);
+        }
       
       // Save updated progress
       localStorage.setItem(mockProgressKey, JSON.stringify(progressData));
@@ -158,9 +158,9 @@ export const useProgressTracking = (
       setIsCompleted(newProgress >= 95);
       
       // Update next lesson
-      const nextLesson = availableLessons.find(
-        lesson => !progressData.completedLessons.includes(lesson.id)
-      );
+        const nextLesson = availableLessons.find(
+          lesson => !progressData.completedLessons.includes(lesson.id)
+        );
       setNextLessonId(nextLesson?.id || null);
     } catch (err) {
       console.error('Error updating watch progress:', err);
@@ -181,7 +181,7 @@ export const useProgressTracking = (
       
       // Add to completed lessons if not already there
       if (!progressData.completedLessons.includes(lessonId)) {
-        progressData.completedLessons.push(lessonId);
+          progressData.completedLessons.push(lessonId);
         progressData.watchProgress[lessonId] = 100;
       }
       
@@ -191,7 +191,7 @@ export const useProgressTracking = (
       // Update state immediately
       setCompletedLessons(progressData.completedLessons);
       setWatchProgress(progressData.watchProgress);
-      
+        
       // Recalculate progress
       let weightedProgress = progressData.completedLessons.length;
       availableLessons.forEach(lesson => {
@@ -212,9 +212,9 @@ export const useProgressTracking = (
       setIsCompleted(newProgress >= 95);
       
       // Update next lesson
-      const nextLesson = availableLessons.find(
-        lesson => !progressData.completedLessons.includes(lesson.id)
-      );
+        const nextLesson = availableLessons.find(
+          lesson => !progressData.completedLessons.includes(lesson.id)
+        );
       setNextLessonId(nextLesson?.id || null);
     } catch (err) {
       console.error('Error marking lesson as complete:', err);

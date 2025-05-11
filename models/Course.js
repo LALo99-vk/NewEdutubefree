@@ -51,6 +51,11 @@ const CourseSchema = new mongoose.Schema({
     type: String,
     required: false
   },
+  studyMaterial: {
+    fileName: String,
+    fileUrl: String,
+    uploadedAt: Date
+  },
   category: {
     type: String,
     required: true
