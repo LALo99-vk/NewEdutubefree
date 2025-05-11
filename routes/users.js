@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Profile = require('../models/Profile');
 
 // Middleware to protect routes
 const auth = require('../middleware/auth');
@@ -160,6 +161,33 @@ router.post('/login', async (req, res) => {
 router.get('/me', auth, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ msg: 'User not found' });
+    }
+    res.json(user);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+// @route   PUT /api/users/me
+// @desc    Update current user's profile
+// @access  Private
+router.put('/me', auth, async (req, res) => {
+  try {
+    const updates = {};
+    const allowedFields = ['name', 'avatar', 'bio', 'college'];
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    });
+    const user = await User.findByIdAndUpdate(
+      req.user.id,
+      { $set: updates },
+      { new: true, runValidators: true }
+    ).select('-password');
     if (!user) {
       return res.status(404).json({ msg: 'User not found' });
     }

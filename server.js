@@ -68,22 +68,32 @@ const userRoutes = require('./routes/users');
 const courseRoutes = require('./routes/courses');
 const categoryRoutes = require('./routes/categories');
 const progressRoutes = require('./routes/progress');
+const profileRoutes = require('./routes/profile');
 
 // Use routes
 app.use('/api/users', userRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/progress', progressRoutes);
+app.use('/api/profile', profileRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Server error:', err);
+  console.error('Error stack:', err.stack);
   res.status(500).json({
     success: false,
     error: process.env.NODE_ENV === 'production' 
       ? 'Server error' 
-      : err.message
+      : err.message,
+    stack: process.env.NODE_ENV === 'production' ? undefined : err.stack
   });
+});
+
+// Add request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+  next();
 });
 
 // Serve static assets in production

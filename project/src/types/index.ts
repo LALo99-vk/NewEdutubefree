@@ -3,8 +3,13 @@ export interface User {
   name: string;
   email: string;
   role: 'user' | 'admin';
-  avatar?: string;
   createdAt: string;
+}
+
+export interface Profile {
+  avatar?: string;
+  bio?: string;
+  college?: string;
 }
 
 export interface Course {

@@ -8,6 +8,7 @@ interface AuthContextType {
   login: (email: string, password: string, role: 'user' | 'admin') => Promise<void>;
   register: (name: string, email: string, password: string, role?: 'user' | 'admin') => Promise<void>;
   logout: () => void;
+  setUser?: (user: User | null) => void;
 }
 
 interface AuthResponse {
@@ -174,6 +175,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         register,
         logout,
+        setUser,
       }}
     >
       {children}
