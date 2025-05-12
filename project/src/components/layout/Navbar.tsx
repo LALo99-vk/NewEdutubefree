@@ -174,6 +174,15 @@ const Navbar: React.FC = () => {
                             <BarChart className="inline-block w-4 h-4 mr-2" />
                             Login Analytics
                           </button>
+                          <div className="border-t border-gray-100 my-1"></div>
+                          <button
+                            onClick={handleLogout}
+                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                            role="menuitem"
+                          >
+                            <LogOut className="inline-block w-4 h-4 mr-2" />
+                            Sign out
+                          </button>
                         </div>
                       </div>
                     )}
